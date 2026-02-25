@@ -13,7 +13,11 @@ from langgraph.graph import END, START, StateGraph
 from src.state import AgentState
 from src.nodes.detectives import doc_analyst_node, repo_investigator_node, vision_inspector_node
 from src.nodes.judges import defense_node, prosecutor_node, tech_lead_node
-from src.nodes.justice import evidence_aggregator_node, judge_collector_node
+from src.nodes.justice import (
+    chief_justice_node,
+    evidence_aggregator_node,
+    judge_collector_node,
+)
 
 
 def load_rubric_dimensions(rubric_path: str | None = None) -> list[dict]:
@@ -49,7 +53,7 @@ def build_detective_graph() -> StateGraph:
 
 
 def build_audit_graph() -> StateGraph:
-    """Build StateGraph through Judges: detectives → EvidenceAggregator → parallel Judges → judge_collector → END."""
+    """Build StateGraph through Chief Justice: detectives → EvidenceAggregator → Judges → judge_collector → ChiefJustice → END."""
     builder = StateGraph(AgentState)
 
     builder.add_node("repo_investigator", repo_investigator_node)
@@ -60,6 +64,7 @@ def build_audit_graph() -> StateGraph:
     builder.add_node("defense", defense_node)
     builder.add_node("tech_lead", tech_lead_node)
     builder.add_node("judge_collector", judge_collector_node)
+    builder.add_node("chief_justice", chief_justice_node)
 
     builder.add_edge(START, "repo_investigator")
     builder.add_edge(START, "doc_analyst")
@@ -69,16 +74,15 @@ def build_audit_graph() -> StateGraph:
     builder.add_edge("doc_analyst", "evidence_aggregator")
     builder.add_edge("vision_inspector", "evidence_aggregator")
 
-    # Fan-out from evidence_aggregator to all three judges (parallel)
     builder.add_edge("evidence_aggregator", "prosecutor")
     builder.add_edge("evidence_aggregator", "defense")
     builder.add_edge("evidence_aggregator", "tech_lead")
 
-    # Fan-in: all judges → judge_collector → END
     builder.add_edge("prosecutor", "judge_collector")
     builder.add_edge("defense", "judge_collector")
     builder.add_edge("tech_lead", "judge_collector")
-    builder.add_edge("judge_collector", END)
+    builder.add_edge("judge_collector", "chief_justice")
+    builder.add_edge("chief_justice", END)
 
     return builder
 
@@ -89,10 +93,13 @@ def create_initial_state(
     rubric_path: str | None = None,
 ) -> AgentState:
     """Build initial AgentState for the graph."""
+    default_rubric = "rubric.json"
+    path = Path(rubric_path or default_rubric)
     dimensions = load_rubric_dimensions(rubric_path)
     return AgentState(
         repo_url=repo_url,
         pdf_path=pdf_path,
+        rubric_path=str(path.resolve()) if path.is_file() else default_rubric,
         rubric_dimensions=dimensions,
         evidences={},
         opinions=[],

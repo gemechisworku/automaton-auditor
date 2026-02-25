@@ -149,18 +149,13 @@ This plan organizes implementation into **phases that can be tested independentl
 
 ### 4.1 Deliverables
 
-- [ ] **`src/nodes/justice.py`** (complete)
-  - **ChiefJusticeNode(state: AgentState) -> dict**
-    - Read `opinions` (group by criterion_id) and `evidences`; load `synthesis_rules` from rubric.
-    - Apply hardcoded rules: security_override, fact_supremacy, functionality_weight, dissent_requirement, variance_re_evaluation (see [SRS §6.3](../specs/system_requirement_spec.md#63-synthesis-rules-chief-justice), [API Contracts §6.3](../specs/api_contracts.md#63-synthesis-rules-object)).
-    - Build `AuditReport` (repo_url, executive_summary, overall_score, criteria with final_score, judge_opinions, dissent_summary where variance > 2, remediation; remediation_plan).
-    - Return `{"final_report": report}`.
-  - **Report serialization:** Convert `AuditReport` to Markdown per [API Contracts §8](../specs/api_contracts.md#8-report-output-contract): Executive Summary → Criterion Breakdown → Remediation Plan.
-  - **Write file:** Write Markdown to configured path (e.g. `audit/` or CLI arg).
-- [ ] **`src/graph.py`** (complete)
-  - Wire: … → EvidenceAggregator → [Judges in parallel per criterion] → ChiefJusticeNode → END.
-  - Optional: conditional edges for error handling (e.g. evidence missing) per SRS FR-19.
-- [ ] **Entry point:** A single function or CLI that: loads rubric, builds initial state, compiles graph, invokes, writes report. Signature aligns with [API Contracts §2](../specs/api_contracts.md#2-public-entry-api) (repo_url, pdf_path, optional rubric_path, output_path).
+- [x] **`src/nodes/justice.py`** (complete)
+  - **ChiefJusticeNode(state: AgentState) -> dict** — Groups opinions by criterion_id; loads synthesis_rules from rubric; applies hardcoded rules (security_override, fact_supremacy, functionality_weight, dissent_requirement, variance_re_evaluation); builds `AuditReport`; returns `{"final_report": report}`.
+  - **audit_report_to_markdown(report)** — Executive Summary → Criterion Breakdown → Remediation Plan per API Contracts §8.
+  - **write_report_to_path(report, output_path)** — Writes Markdown to path; creates parent dirs.
+- [x] **`src/graph.py`** (complete)
+  - build_audit_graph(): … → judge_collector → ChiefJusticeNode → END. rubric_path in state for synthesis_rules load.
+- [x] **Entry point:** `run_audit(repo_url, pdf_path, rubric_path=None, output_path=None)` in `src/run.py`; CLI `python -m src.run repo_url pdf_path [--rubric path] [--output path]`.
 
 ### 4.2 How to Test (Independently)
 

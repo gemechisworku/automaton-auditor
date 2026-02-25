@@ -27,7 +27,19 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 
 ## Run
 
-*To be filled in later phases.* The entry API will accept a repository URL and PDF path and produce a Markdown audit report (e.g. `uv run python -m src.run <repo_url> <pdf_path>`).
+Run a full audit (requires `OPENAI_API_KEY` for Judges):
+
+```bash
+uv run python -m src.run <repo_url> <pdf_path> [--rubric path] [--output path]
+```
+
+Example:
+
+```bash
+uv run python -m src.run https://github.com/octocat/Hello-World report.pdf --output audit/report.md
+```
+
+The report is written as Markdown (Executive Summary, Criterion Breakdown, Remediation Plan) to the given path or default `audit/report_<repo_slug>.md`.
 
 ## Project layout
 
@@ -37,7 +49,8 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 - `src/nodes/detectives.py` — RepoInvestigator, DocAnalyst, VisionInspector (return evidences per dimension).
 - `src/nodes/judges.py` — Prosecutor, Defense, Tech Lead (structured output per dimension; OPENAI_API_KEY).
 - `src/nodes/justice.py` — EvidenceAggregator, judge_collector; ChiefJusticeNode (Phase 4).
-- `src/graph.py` — `build_detective_graph()` (Phase 2); `build_audit_graph()` (Phase 3: + parallel Judges → END).
+- `src/graph.py` — `build_detective_graph()`, `build_audit_graph()` (through Chief Justice), `create_initial_state`, `run_audit`.
+- `src/run.py` — Entry point `run_audit(repo_url, pdf_path, rubric_path?, output_path?)` and CLI `python -m src.run`.
 - `rubric.json` — Machine-readable rubric (dimensions, synthesis rules).
 - `specs/` — System requirements, architecture, API contracts.
 

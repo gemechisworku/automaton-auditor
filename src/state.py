@@ -68,6 +68,7 @@ class AgentState(TypedDict, total=False):
 
     repo_url: str
     pdf_path: str
+    rubric_path: str | None  # optional; Chief Justice loads synthesis_rules from here
     rubric_dimensions: list[dict[str, Any]]
     evidences: Annotated[dict[str, list[Evidence]], operator.ior]
     opinions: Annotated[list[JudicialOpinion], operator.add]
