@@ -26,6 +26,7 @@ All authoritative specs live in **`specs/`**. Follow them for requirements, arch
 | **`specs/_meta.md`** | Technical standards, architectural style, tech stack, API patterns, file layout (e.g. `src/state.py`, `src/tools/`, `src/nodes/`, `src/graph.py`). | When choosing technologies, patterns, or file locations; when writing new modules. |
 | **`specs/system_architecture.md`** | Component structure, state model, runtime flow (Detective → Judicial → Supreme Court), node topology, data flow. | When adding or changing nodes, state fields, or graph structure. |
 | **`specs/api_contracts.md`** | Contracts for entry API, state/data types (Evidence, JudicialOpinion, AuditReport, AgentState), node signature, tools (repo, doc, vision), rubric JSON schema, report Markdown structure, env vars. | When implementing or changing any API, type, tool, rubric shape, or report format. |
+| **`specs/functional_requirement.md`** | Functional requirements grouped by area (Entry, State, Detective, Judicial, Supreme Court, Rubric) with IDs (FE, FS, FD, FJ, FC, FQ), SRS traceability, and links to architecture/API contracts. | When you need a quick lookup of *what* must be implemented by capability (e.g. Detective layer, Judicial layer) or traceability from requirement to SRS and other specs. |
 
 **Rule:** Before implementing, read the relevant spec sections. When a spec says "shall," implementation **must** comply. Do not add requirements or contracts that contradict the specs.
 
@@ -47,7 +48,7 @@ For **every** implementation (feature, fix, or refactor), follow this cycle:
 
 ### 2. Code
 
-- **Follow specs:** Implement to satisfy `system_requirement_spec.md`, `_meta.md`, `system_architecture.md`, and `api_contracts.md`. Use typed state (Pydantic/TypedDict), reducers for parallel-written state, sandboxed repo tools (no `os.system` with unsanitized input), structured Judge output (`.with_structured_output(JudicialOpinion)`), and rubric-driven behavior.
+- **Follow specs:** Implement to satisfy `system_requirement_spec.md`, `_meta.md`, `system_architecture.md`, `api_contracts.md`, and—when you need requirements by area—`functional_requirement.md`. Use typed state (Pydantic/TypedDict), reducers for parallel-written state, sandboxed repo tools (no `os.system` with unsanitized input), structured Judge output (`.with_structured_output(JudicialOpinion)`), and rubric-driven behavior.
 - **Stick to layout:** Use `src/state.py`, `src/tools/repo_tools.py`, `src/tools/doc_tools.py`, `src/nodes/detectives.py`, `src/nodes/judges.py`, `src/nodes/justice.py`, `src/graph.py` as in _meta and architecture.
 - **Test as you go:** Prefer tests that match the implementation plan’s "How to Test" for the phase (unit tests for tools, graph runs for nodes, full run for end-to-end).
 
@@ -71,6 +72,7 @@ For **every** implementation (feature, fix, or refactor), follow this cycle:
 ## Quick Reference
 
 - **Requirements (what to build):** `specs/system_requirement_spec.md`
+- **Functional requirements by area (FE/FS/FD/FJ/FC/FQ):** `specs/functional_requirement.md` — refer when you need a capability-focused checklist or SRS traceability.
 - **Standards and patterns (how to build):** `specs/_meta.md`
 - **Structure and flow (where things go):** `specs/system_architecture.md`
 - **Types, APIs, contracts (interfaces):** `specs/api_contracts.md`
