@@ -88,16 +88,16 @@ This plan organizes implementation into **phases that can be tested independentl
 
 ### 2.1 Deliverables
 
-- [ ] **`src/nodes/detectives.py`**
+- [x] **`src/nodes/detectives.py`**
   - `repo_investigator_node(state: AgentState) -> dict` — Filter dimensions by `target_artifact == "github_repo"`; call clone_repo, extract_git_history, analyze_graph_structure; build `Evidence` list per dimension; return `{"evidences": {dimension_id: [Evidence, ...]}}`.
-  - `doc_analyst_node(state: AgentState) -> dict` — Filter by `target_artifact == "pdf_report"`; ingest_pdf, query_doc (and cross-reference if needed); return `{"evidences": {...}}`.
-  - `vision_inspector_node(state: AgentState) -> dict` — Filter by `target_artifact == "pdf_images"`; extract_images_from_pdf, analyze_diagram; return `{"evidences": {...}}`. Execution may be optional (stub or skip if no vision key).
-- [ ] **`src/nodes/justice.py`** (partial)
-  - `evidence_aggregator_node(state: AgentState) -> dict` — No-op merge or validation of `state["evidences"]`; can return `{}` if reducers already merged everything.
-- [ ] **`src/graph.py`** (partial)
+  - `doc_analyst_node(state: AgentState) -> dict` — Filter by `target_artifact == "pdf_report"`; ingest_pdf, query_doc; return `{"evidences": {...}}`.
+  - `vision_inspector_node(state: AgentState) -> dict` — Filter by `target_artifact == "pdf_images"`; extract_images_from_pdf, analyze_diagram; return `{"evidences": {...}}`. Execution optional when no vision key.
+- [x] **`src/nodes/justice.py`** (partial)
+  - `evidence_aggregator_node(state: AgentState) -> dict` — No-op (reducers already merged); returns `{}`.
+- [x] **`src/graph.py`** (partial)
   - Build StateGraph with: START → parallel(RepoInvestigator, DocAnalyst, VisionInspector) → EvidenceAggregator → END.
   - Initial state: `repo_url`, `pdf_path`, `rubric_dimensions` (from rubric.json), empty `evidences`/`opinions`, no `final_report`.
-  - Use LangGraph’s parallel node invocation and reducer semantics for `evidences`.
+  - Use LangGraph parallel edges and reducer semantics for `evidences`.
 
 ### 2.2 How to Test (Independently)
 
