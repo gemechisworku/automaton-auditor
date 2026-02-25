@@ -54,16 +54,16 @@ This plan organizes implementation into **phases that can be tested independentl
 
 ### 1.1 Deliverables
 
-- [ ] **`src/tools/repo_tools.py`**
-  - `clone_repo(repo_url: str) -> str` — Clone into `tempfile.TemporaryDirectory()`; return repo path; use `subprocess.run()` for git; handle auth/network errors; **no** `os.system()` with unsanitized input.
+- [x] **`src/tools/repo_tools.py`**
+  - `clone_repo(repo_url: str) -> str` — Clone into temp dir (`tempfile.mkdtemp()`); return repo path; use `subprocess.run()` for git; handle auth/network errors; **no** `os.system()` with unsanitized input.
   - `extract_git_history(repo_path: str)` — Run `git log --oneline --reverse`; return structured list (e.g. commit, message, timestamp).
-  - `analyze_graph_structure(repo_path: str)` — Use Python `ast` (or tree-sitter) to detect StateGraph, add_edge, parallelism, reducers in `src/graph.py` (or equivalent); return structured dict; **no** regex-only for structure.
-- [ ] **`src/tools/doc_tools.py`**
-  - `ingest_pdf(pdf_path: str)` — Chunk PDF (e.g. Docling); return queryable store (RAG-lite); do not dump full text into a single string.
+  - `analyze_graph_structure(repo_path: str)` — Use Python `ast` to detect StateGraph, add_edge, add_node, parallelism, reducers in `src/graph.py` (or equivalent); return structured dict; **no** regex-only for structure.
+- [x] **`src/tools/doc_tools.py`**
+  - `ingest_pdf(pdf_path: str)` — Chunk PDF (pypdf + chunking); return queryable store (RAG-lite); do not dump full text into a single string.
   - `query_doc(store, question: str) -> str` — Query store; return answer or excerpt.
-  - `extract_images_from_pdf(pdf_path: str) -> List` — Extract images for diagrams.
-  - `analyze_diagram(image, question: str) -> str` — Call vision-capable LLM (optional at runtime); can be stub/mock for Phase 1 tests.
-- [ ] **Tests** — Unit tests for each tool (see §1.2).
+  - `extract_images_from_pdf(pdf_path: str) -> List` — Extract images for diagrams (pypdf page.images).
+  - `analyze_diagram(image, question: str) -> str` — Call vision-capable LLM when langchain-openai available (optional at runtime); stub message otherwise.
+- [x] **Tests** — Unit tests for each tool (see §1.2).
 
 ### 1.2 How to Test (Independently)
 

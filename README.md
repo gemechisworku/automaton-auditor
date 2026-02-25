@@ -32,7 +32,8 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 ## Project layout
 
 - `src/state.py` — State and data types (Evidence, JudicialOpinion, AuditReport, AgentState).
-- `src/tools/` — Repo, doc, and vision tools (Phase 1).
+- `src/tools/repo_tools.py` — Sandboxed clone, git history, AST-based graph structure analysis.
+- `src/tools/doc_tools.py` — PDF ingest (chunked/RAG-lite), query_doc, image extraction, analyze_diagram (vision optional).
 - `src/nodes/` — Detective, Judge, and Chief Justice nodes (Phases 2–4).
 - `src/graph.py` — LangGraph definition (Phases 2–4).
 - `rubric.json` — Machine-readable rubric (dimensions, synthesis rules).
