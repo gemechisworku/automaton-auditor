@@ -1,0 +1,96 @@
+{
+  "rubric_metadata": {
+    "rubric_name": "Automaton Auditor — Week 2",
+    "grading_target": "Auditor Repository & Architectural Report",
+    "version": "1.0"
+  },
+  "dimensions": [
+    {
+      "id": "git_forensic_analysis",
+      "name": "Git Forensic Analysis",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Analyze git log for atomic vs monolithic history; extract timestamps and commit messages.",
+      "success_pattern": "Atomic commits, clear narrative, timestamps captured.",
+      "failure_pattern": "Monolithic or missing history; no structured log."
+    },
+    {
+      "id": "state_management_rigor",
+      "name": "State Management Rigor",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Verify typed state in src/state.py: Pydantic BaseModel and TypedDict with reducers.",
+      "success_pattern": "Evidence, JudicialOpinion, AgentState with Annotated reducers (ior, add).",
+      "failure_pattern": "Plain dicts; no reducers for parallel-written state."
+    },
+    {
+      "id": "graph_orchestration",
+      "name": "Graph Orchestration Architecture",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Verify graph is functionally wired for parallelism (AST: StateGraph, add_edge, fan-out).",
+      "success_pattern": "StateGraph with parallel branches and fan-in.",
+      "failure_pattern": "Linear pipeline only; no parallel node invocation."
+    },
+    {
+      "id": "safe_tool_engineering",
+      "name": "Safe Tool Engineering",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Check for sandboxed clone (tempfile), subprocess with error handling; no os.system with unsanitized input.",
+      "success_pattern": "Sandboxed git; subprocess.run; no os.system with user input.",
+      "failure_pattern": "Clone into cwd; os.system with repo URL."
+    },
+    {
+      "id": "structured_output_enforcement",
+      "name": "Structured Output Enforcement",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Verify Judges use .with_structured_output(JudicialOpinion) or bind_tools to same schema.",
+      "success_pattern": "Structured output bound to JudicialOpinion; validation on parse.",
+      "failure_pattern": "Free-text only; no schema binding."
+    },
+    {
+      "id": "judicial_nuance",
+      "name": "Judicial Nuance and Dialectics",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Verify three distinct judge personas (Prosecutor, Defense, Tech Lead) with distinct prompts.",
+      "success_pattern": "Three personas; parallel per criterion; distinct prompts.",
+      "failure_pattern": "Single judge or identical prompts."
+    },
+    {
+      "id": "chief_justice_synthesis",
+      "name": "Chief Justice Synthesis Engine",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Verify ChiefJusticeNode uses hardcoded synthesis rules (security, evidence, functionality, dissent, variance).",
+      "success_pattern": "Deterministic rules in code; no LLM for synthesis.",
+      "failure_pattern": "LLM-only synthesis; no rule application."
+    },
+    {
+      "id": "theoretical_depth",
+      "name": "Theoretical Depth (Documentation)",
+      "target_artifact": "pdf_report",
+      "forensic_instruction": "Check for substantive use of concepts (e.g. Dialectical Synthesis, Metacognition) — explanation of how architecture executes them.",
+      "success_pattern": "Concepts explained with execution detail.",
+      "failure_pattern": "Keyword use only; no substantive explanation."
+    },
+    {
+      "id": "report_accuracy",
+      "name": "Report Accuracy (Cross-Reference)",
+      "target_artifact": "pdf_report",
+      "forensic_instruction": "Cross-reference report claims (e.g. file paths) with RepoInvestigator data; flag hallucination if cited file does not exist.",
+      "success_pattern": "Verified vs hallucinated paths; cross-reference with repo evidence.",
+      "failure_pattern": "No cross-reference; unsupported claims accepted."
+    },
+    {
+      "id": "swarm_visual",
+      "name": "Architectural Diagram Analysis",
+      "target_artifact": "pdf_images",
+      "forensic_instruction": "Analyze diagrams for flow: Detectives (Parallel) → Evidence Aggregation → Judges (Parallel) → Synthesis; distinguish from linear pipeline.",
+      "success_pattern": "Flow analysis; parallel split/aggregation identified.",
+      "failure_pattern": "Linear pipeline only; no flow verification."
+    }
+  ],
+  "synthesis_rules": {
+    "security_override": "Confirmed security vulnerability (e.g. os.system with unsanitized inputs) overrides Defense; security flaws cap score at 3.",
+    "fact_supremacy": "Detective evidence overrides unsupported Judge claims; hallucination overruled.",
+    "functionality_weight": "Tech Lead confirmation that architecture is modular and workable carries highest weight for Architecture criterion.",
+    "dissent_requirement": "When score variance across the three judges exceeds 2, include a dissent summary.",
+    "variance_re_evaluation": "When variance > 2, apply re-evaluation rules before final score."
+  }
+}

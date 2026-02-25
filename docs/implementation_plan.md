@@ -26,13 +26,13 @@ This plan organizes implementation into **phases that can be tested independentl
 
 ### 0.1 Deliverables
 
-- [ ] **`pyproject.toml`** — Python 3.11+, uv-managed; dependencies: pydantic, langgraph, langchain, typing_extensions; dev: pytest (optional). Lock with `uv lock`.
-- [ ] **`.env.example`** — Placeholder entries for: LLM API key(s), `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY` (optional). No real secrets.
-- [ ] **`src/state.py`** — All Pydantic and state types per [API Contracts §3](../specs/api_contracts.md#3-state-and-data-type-contracts):
+- [x] **`pyproject.toml`** — Python 3.11+, uv-managed; dependencies: pydantic, langgraph, langchain, typing_extensions; dev: pytest (optional). Lock with `uv lock`.
+- [x] **`.env.example`** — Placeholder entries for: LLM API key(s), `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY` (optional). No real secrets.
+- [x] **`src/state.py`** — All Pydantic and state types per [API Contracts §3](../specs/api_contracts.md#3-state-and-data-type-contracts):
   - `Evidence`, `JudicialOpinion`, `CriterionResult`, `AuditReport` (BaseModel).
   - `AgentState` (TypedDict) with `evidences` and `opinions` using `Annotated[..., operator.ior]` and `Annotated[..., operator.add]`.
-- [ ] **`rubric.json`** — Minimal or full rubric per [API Contracts §6](../specs/api_contracts.md#6-rubric-json-schema-contract): `rubric_metadata`, `dimensions[]` (id, name, target_artifact, forensic_instruction, success_pattern, failure_pattern), `synthesis_rules`.
-- [ ] **`README.md`** — Setup: install (uv), copy `.env.example` to `.env`, run instructions (to be filled in later phases).
+- [x] **`rubric.json`** — Minimal or full rubric per [API Contracts §6](../specs/api_contracts.md#6-rubric-json-schema-contract): `rubric_metadata`, `dimensions[]` (id, name, target_artifact, forensic_instruction, success_pattern, failure_pattern), `synthesis_rules`.
+- [x] **`README.md`** — Setup: install (uv), copy `.env.example` to `.env`, run instructions (to be filled in later phases).
 
 ### 0.2 How to Test (Independently)
 
