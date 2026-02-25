@@ -14,10 +14,25 @@ from src.state import AgentState, AuditReport, CriterionResult, Evidence, Judici
 
 def evidence_aggregator_node(state: AgentState) -> dict:
     """
-    No-op merge or validation of state["evidences"]. Reducers already merged Detective outputs;
-    can return {} or a pass-through. API Contracts §4.
+    Merge/validation of state["evidences"]. Injects placeholder evidence for any dimension
+    with no evidence so the graph can terminate cleanly (SRS FR-19, A2). API Contracts §4.
     """
-    return {}
+    evidences = dict(state.get("evidences") or {})
+    dimensions = state.get("rubric_dimensions") or []
+    for dim in dimensions:
+        dim_id = dim.get("id", "unknown")
+        if dim_id not in evidences or not evidences[dim_id]:
+            goal = dim.get("forensic_instruction", "")
+            evidences[dim_id] = [
+                Evidence(
+                    goal=goal,
+                    found=False,
+                    location=state.get("repo_url") or state.get("pdf_path") or "",
+                    rationale="No evidence collected (placeholder for clean termination).",
+                    confidence=0.0,
+                )
+            ]
+    return {"evidences": evidences}
 
 
 def judge_collector_node(state: AgentState) -> dict:

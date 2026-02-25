@@ -178,11 +178,11 @@ This plan organizes implementation into **phases that can be tested independentl
 
 ### 5.1 Deliverables
 
-- [ ] **Conditional edges** — On clone failure, missing PDF, or optional “evidence missing” branch: route to error handler or inject placeholder evidence so graph can terminate cleanly (SRS FR-19, A2).
-- [ ] **CLI or script** — Documented way to run audit: e.g. `uv run python -m src.run repo_url pdf_path [--rubric path] [--output path]`; clear errors for missing env or invalid args.
-- [ ] **README.md** — Update with: install (uv), env setup (.env from .env.example), how to run (CLI/entry), where report is written, optional LangSmith setup.
-- [ ] **Optional: Dockerfile** — Containerized run; document how to build and run with env vars.
-- [ ] **Observability** — Ensure `LANGCHAIN_TRACING_V2=true` is documented and used so full trace (Detectives → Judges → Chief Justice) is visible in LangSmith.
+- [x] **Placeholder evidence / clean termination** — EvidenceAggregator injects placeholder evidence for any dimension with no evidence so graph terminates cleanly (SRS FR-19, A2). Clone/PDF failures handled inside Detective nodes.
+- [x] **CLI** — `uv run python -m src.run repo_url pdf_path [--rubric path] [--output path]`; clear errors for missing OPENAI_API_KEY, empty repo_url/pdf_path, invalid rubric (ValueError/RuntimeError, exit 1).
+- [x] **README.md** — Install (uv), env (.env from .env.example, OPENAI_API_KEY), how to run, where report is written (audit/report_<slug>.md), LangSmith (LANGCHAIN_TRACING_V2), Docker.
+- [x] **Dockerfile** — Optional containerized run; build/run documented in README with env-file and volume mounts.
+- [x] **Observability** — LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY documented in .env.example and README (LangSmith section).
 
 ### 5.2 How to Test (Independently)
 
@@ -224,5 +224,7 @@ Phase 0 (Foundation)
 Each phase can be validated before starting the next; mocks (e.g. fake evidence for Phase 3, fake opinions for Phase 4) allow testing nodes in isolation.
 
 ---
+
+**Implementation status:** All phases (0–5) are implemented. Test suite: `uv run pytest tests/ -v` (38 tests). Entry: `uv run python -m src.run <repo_url> <pdf_path>`.
 
 *End of Implementation Plan*

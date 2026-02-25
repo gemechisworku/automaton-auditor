@@ -53,7 +53,7 @@ def test_env_check_fails_when_no_llm_key():
 
     # Simulate check: at least one of these must be set (and non-empty)
     def require_at_least_one_llm_key(env=None):
-        env = env or os.environ
+        env = os.environ if env is None else env
         for k in llm_keys:
             if env.get(k, "").strip():
                 return True

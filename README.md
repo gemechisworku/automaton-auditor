@@ -9,7 +9,7 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 
 ## Setup
 
-1. **Install dependencies with uv**
+1. **Install dependencies**
 
    ```bash
    uv sync
@@ -17,17 +17,17 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 
 2. **Environment**
 
-   Copy the example env file and set your API keys (no real secrets in the example):
+   Copy the example env file and set your API key (required for Judge nodes):
 
    ```bash
    cp .env.example .env
    ```
 
-   Edit `.env` and set at least one LLM API key (e.g. `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`) for the Judicial layer. Optionally set `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` for LangSmith tracing.
+   Edit `.env` and set **`OPENAI_API_KEY`** (required). The app loads `.env` automatically when you run the CLI.
 
 ## Run
 
-Run a full audit (requires `OPENAI_API_KEY` for Judges):
+From the project root (so `.env` is found):
 
 ```bash
 uv run python -m src.run <repo_url> <pdf_path> [--rubric path] [--output path]
@@ -39,7 +39,26 @@ Example:
 uv run python -m src.run https://github.com/octocat/Hello-World report.pdf --output audit/report.md
 ```
 
-The report is written as Markdown (Executive Summary, Criterion Breakdown, Remediation Plan) to the given path or default `audit/report_<repo_slug>.md`.
+- **Where the report is written:** To the path given by `--output`, or by default **`audit/report_<repo_slug>.md`** (e.g. `audit/report_Hello-World.md`). The file is Markdown: Executive Summary, Criterion Breakdown, Remediation Plan.
+- **Errors:** Missing `OPENAI_API_KEY`, empty `repo_url`/`pdf_path`, or invalid rubric produce a clear error message and exit code 1.
+
+## Observability (LangSmith)
+
+To trace the full flow (Detectives → Judges → Chief Justice) in [LangSmith](https://smith.langchain.com/):
+
+1. Set in `.env`: `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY=<your-key>`.
+2. Run the audit as above; open LangSmith to see the trace.
+
+## Docker (optional)
+
+Build and run with Docker:
+
+```bash
+docker build -t automaton-auditor .
+docker run --env-file .env -v "%cd%\audit:/app/audit" -v "%cd%\report.pdf:/app/report.pdf" automaton-auditor https://github.com/org/repo /app/report.pdf --output /app/audit/report.md
+```
+
+On Linux/macOS use `$(pwd)` instead of `%cd%`. Ensure `.env` contains `OPENAI_API_KEY` and any PDF is mounted where `pdf_path` points.
 
 ## Project layout
 
