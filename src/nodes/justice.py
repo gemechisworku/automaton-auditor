@@ -12,6 +12,22 @@ from typing import Any
 from src.state import AgentState, AuditReport, CriterionResult, Evidence, JudicialOpinion
 
 
+def is_critical_failure(state: AgentState) -> bool:
+    """
+    True if evidence is entirely placeholder/error (no successful collection).
+    Used by graph conditional edge to route to degraded_report (error-handling path).
+    """
+    evidences = state.get("evidences") or {}
+    if not evidences:
+        return True
+    for dim_id, ev_list in evidences.items():
+        for e in ev_list or []:
+            ev = e if isinstance(e, Evidence) else Evidence(**e)
+            if ev.confidence > 0 and "placeholder" not in (ev.rationale or "").lower():
+                return False
+    return True
+
+
 def evidence_aggregator_node(state: AgentState) -> dict:
     """
     Merge/validation of state["evidences"]. Injects placeholder evidence for any dimension
@@ -249,3 +265,51 @@ def write_report_to_path(report: AuditReport, output_path: str) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(audit_report_to_markdown(report), encoding="utf-8")
+
+
+def degraded_report_node(state: AgentState) -> dict[str, Any]:
+    """
+    Produce a minimal AuditReport when repo/PDF unavailable or collection failed.
+    Used after conditional edge from evidence_aggregator (error-handling path).
+    """
+    evidences_map = state.get("evidences") or {}
+    dimensions = state.get("rubric_dimensions") or []
+    repo_url = state.get("repo_url") or ""
+    criteria_results: list[CriterionResult] = []
+    for dim in dimensions:
+        dim_id = dim.get("id", "unknown")
+        dim_name = dim.get("name", dim_id)
+        ev_list = evidences_map.get(dim_id, [])
+        evidence_objs = [
+            e if isinstance(e, Evidence) else Evidence(**e)
+            for e in ev_list
+            if isinstance(e, (Evidence, dict))
+        ]
+        remediation = "Re-run audit with valid repo URL and PDF path; fix input errors."
+        criteria_results.append(
+            CriterionResult(
+                dimension_id=dim_id,
+                dimension_name=dim_name,
+                final_score=1,
+                judge_opinions=[],
+                dissent_summary="No judicial deliberation (degraded path: inputs missing or failed).",
+                remediation=remediation,
+            )
+        )
+    overall = 1.0
+    executive_summary = (
+        f"Audit of {repo_url}: degraded run. "
+        "Repo or PDF unavailable or collection failed. No judge opinions. "
+        "Re-run with valid inputs."
+    )
+    remediation_plan = "\n\n".join(
+        f"**{c.dimension_name}**: {c.remediation}" for c in criteria_results
+    ) or "No remediation plan."
+    report = AuditReport(
+        repo_url=repo_url,
+        executive_summary=executive_summary.strip(),
+        overall_score=overall,
+        criteria=criteria_results,
+        remediation_plan=remediation_plan,
+    )
+    return {"final_report": report}

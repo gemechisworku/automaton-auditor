@@ -9,6 +9,8 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 
 ## Setup
 
+**Prerequisites:** Python 3.11+ and [uv](https://docs.astral.sh/uv/). For reproducible installs, `uv sync` uses the project's **`uv.lock`** (pinned dependency versions).
+
 1. **Install dependencies**
 
    ```bash

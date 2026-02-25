@@ -15,7 +15,9 @@ from src.nodes.detectives import doc_analyst_node, repo_investigator_node, visio
 from src.nodes.judges import defense_node, prosecutor_node, tech_lead_node
 from src.nodes.justice import (
     chief_justice_node,
+    degraded_report_node,
     evidence_aggregator_node,
+    is_critical_failure,
     judge_collector_node,
 )
 
@@ -52,14 +54,29 @@ def build_detective_graph() -> StateGraph:
     return builder
 
 
+def _route_after_aggregator(state: AgentState) -> str:
+    """Conditional edge: degraded path when inputs failed; else normal judicial path."""
+    return "degraded_report" if is_critical_failure(state) else "judicial_entry"
+
+
+def _judicial_entry_node(state: AgentState) -> dict:
+    """No-op: passes state so conditional can fan out to all three judges."""
+    return {}
+
+
 def build_audit_graph() -> StateGraph:
-    """Build StateGraph through Chief Justice: detectives → EvidenceAggregator → Judges → judge_collector → ChiefJustice → END."""
+    """
+    Build StateGraph: detectives → EvidenceAggregator → [conditional]
+    → either degraded_report → END (error path) or judicial_entry → Judges → judge_collector → ChiefJustice → END.
+    """
     builder = StateGraph(AgentState)
 
     builder.add_node("repo_investigator", repo_investigator_node)
     builder.add_node("doc_analyst", doc_analyst_node)
     builder.add_node("vision_inspector", vision_inspector_node)
     builder.add_node("evidence_aggregator", evidence_aggregator_node)
+    builder.add_node("degraded_report", degraded_report_node)
+    builder.add_node("judicial_entry", _judicial_entry_node)
     builder.add_node("prosecutor", prosecutor_node)
     builder.add_node("defense", defense_node)
     builder.add_node("tech_lead", tech_lead_node)
@@ -74,9 +91,17 @@ def build_audit_graph() -> StateGraph:
     builder.add_edge("doc_analyst", "evidence_aggregator")
     builder.add_edge("vision_inspector", "evidence_aggregator")
 
-    builder.add_edge("evidence_aggregator", "prosecutor")
-    builder.add_edge("evidence_aggregator", "defense")
-    builder.add_edge("evidence_aggregator", "tech_lead")
+    # Conditional/error-handling edge: skip judges when collection failed
+    builder.add_conditional_edges(
+        "evidence_aggregator",
+        _route_after_aggregator,
+        {"degraded_report": "degraded_report", "judicial_entry": "judicial_entry"},
+    )
+    builder.add_edge("degraded_report", END)
+
+    builder.add_edge("judicial_entry", "prosecutor")
+    builder.add_edge("judicial_entry", "defense")
+    builder.add_edge("judicial_entry", "tech_lead")
 
     builder.add_edge("prosecutor", "judge_collector")
     builder.add_edge("defense", "judge_collector")

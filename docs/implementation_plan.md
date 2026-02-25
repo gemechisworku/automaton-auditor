@@ -225,6 +225,6 @@ Each phase can be validated before starting the next; mocks (e.g. fake evidence 
 
 ---
 
-**Implementation status:** All phases (0–5) are implemented. Test suite: `uv run pytest tests/ -v` (38 tests). Entry: `uv run python -m src.run <repo_url> <pdf_path>`.
+**Implementation status:** All phases (0–5) are implemented. Grader improvements (RAG-like PDF interface, conditional/error-handling edges, README prerequisites + lock file) are in place. Test suite: `uv run pytest tests/ -v` (42 tests). Entry: `uv run python -m src.run <repo_url> <pdf_path>`.
 
 *End of Implementation Plan*

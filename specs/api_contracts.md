@@ -170,12 +170,14 @@ Tools are callables (or LangChain tools) used by Detective nodes. They **shall n
 
 ### 5.2 Doc Tools (`src/tools/doc_tools.py`)
 
+The PDF tool exposes a **RAG-like interface**: ingestion returns **chunked, queryable segments** (e.g. page-bound or character-bound) and a **query function**; it does **not** dump full document text. Missing file and parse failures are handled with clear exceptions.
+
 | Function | Input | Output | Description |
 |----------|--------|--------|-------------|
-| `ingest_pdf(pdf_path: str) -> Any` | Path to PDF | Queryable store (implementation-defined) | Chunks the PDF; does **not** dump full text into memory for context (RAG-lite) (SRS FR-8). |
-| `query_doc(store: Any, question: str) -> str` | Store from `ingest_pdf`, question | Answer text | Returns relevant excerpts or answer for the question; chunked retrieval. |
+| `ingest_pdf(pdf_path: str, chunk_by: "char" \| "page" = "char") -> PDFIngestionResult` | Path to PDF, optional chunk mode | `PDFIngestionResult` (segments + `.query(question)`) | Chunked, queryable segments (page or char); **not** full-text dump (SRS FR-8). Raises `FileNotFoundError` if missing; `PDFParseError` on corrupt/parse failure. |
+| `query_doc(store: DocStore \| PDFIngestionResult, question: str) -> str` | Store from `ingest_pdf`, question | Answer text | RAG retrieval over segments; returns relevant excerpts. |
 | `extract_images_from_pdf(pdf_path: str) -> List[Any]` | Path to PDF | List of images (e.g. PIL Image or bytes) | Extracts images for VisionInspector (SRS FR-9). |
-| `analyze_diagram(image: Any, question: str) -> str` | Image, question | Answer text | Uses vision-capable LLM (e.g. Gemini Pro Vision, GPT-4o); answers flow/structure questions. Optional at runtime; implementation required. |
+| `analyze_diagram(image: Any, question: str) -> str` | Image, question | Answer text | Uses vision-capable LLM (e.g. GPT-4o); optional at runtime. |
 
 ### 5.3 Cross-Reference (DocAnalyst)
 

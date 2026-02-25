@@ -9,7 +9,13 @@ from __future__ import annotations
 from typing import Any
 
 from src.state import AgentState, Evidence
-from src.tools.doc_tools import analyze_diagram, extract_images_from_pdf, ingest_pdf, query_doc
+from src.tools.doc_tools import (
+    PDFParseError,
+    analyze_diagram,
+    extract_images_from_pdf,
+    ingest_pdf,
+    query_doc,
+)
 from src.tools.repo_tools import (
     RepoCloneError,
     analyze_graph_structure,
@@ -163,7 +169,7 @@ def doc_analyst_node(state: AgentState) -> dict[str, Any]:
 
     try:
         store = ingest_pdf(pdf_path)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, PDFParseError) as e:
         for d in dimensions:
             evidences[d.get("id", "unknown")] = [
                 Evidence(

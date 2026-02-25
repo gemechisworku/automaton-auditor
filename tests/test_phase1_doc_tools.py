@@ -1,12 +1,16 @@
 """
 Phase 1 tests: doc tools — ingest_pdf, query_doc, extract_images_from_pdf, analyze_diagram.
+RAG-like interface, page chunks, and robust error handling (PDFParseError).
 """
 
 import pytest
 from pypdf import PdfWriter
 
 from src.tools.doc_tools import (
+    ChunkSegment,
     DocStore,
+    PDFIngestionResult,
+    PDFParseError,
     analyze_diagram,
     extract_images_from_pdf,
     ingest_pdf,
@@ -16,40 +20,70 @@ from src.tools.doc_tools import (
 
 def test_ingest_pdf_and_query_doc(tmp_path):
     """Use a small PDF; ingest; query; assert non-empty string and chunked (not single blob)."""
-    # Create minimal PDF (blank page is ok - we get at least one chunk)
     pdf_path = tmp_path / "doc.pdf"
     w = PdfWriter()
     w.add_blank_page(612, 792)
     with open(pdf_path, "wb") as f:
         w.write(f)
 
-    store = ingest_pdf(str(pdf_path))
-    assert isinstance(store, DocStore)
-    assert hasattr(store, "chunks")
-    # Chunked: either multiple chunks or one short chunk, not full-doc single blob
-    assert len(store.chunks) >= 1
-    total_len = sum(len(c) for c in store.chunks)
-    # For blank page we might get one small chunk
-    assert total_len < 100_000  # sanity: not a huge single blob
+    result = ingest_pdf(str(pdf_path))
+    assert isinstance(result, PDFIngestionResult)
+    assert hasattr(result, "segments")
+    assert hasattr(result, "query")
+    assert len(result.segments) >= 1
+    total_len = sum(len(s.text) for s in result.segments)
+    assert total_len < 100_000
 
-    answer = query_doc(store, "What is the main topic?")
+    answer = query_doc(result, "What is the main topic?")
     assert isinstance(answer, str)
     assert len(answer) >= 1
+    # RAG: answer comes from segments, not full-doc dump
+    answer2 = result.query("topic")
+    assert isinstance(answer2, str)
+
+
+def test_ingest_pdf_returns_rag_segments(tmp_path):
+    """ingest_pdf returns queryable segments; query returns excerpt from segments only."""
+    pdf_path = tmp_path / "rag.pdf"
+    w = PdfWriter()
+    w.add_blank_page(612, 792)
+    with open(pdf_path, "wb") as f:
+        w.write(f)
+    result = ingest_pdf(str(pdf_path))
+    assert isinstance(result.get_segments(), list)
+    for seg in result.get_segments():
+        assert isinstance(seg, ChunkSegment)
+        assert hasattr(seg, "text")
+        assert hasattr(seg, "page_no")
+
+
+def test_ingest_pdf_page_chunks(tmp_path):
+    """chunk_by='page' returns one segment per page with page_no set."""
+    pdf_path = tmp_path / "pages.pdf"
+    w = PdfWriter()
+    w.add_blank_page(612, 792)
+    w.add_blank_page(612, 792)
+    with open(pdf_path, "wb") as f:
+        w.write(f)
+    result = ingest_pdf(str(pdf_path), chunk_by="page")
+    assert len(result.segments) >= 1
+    # Page-bound segments have page_no
+    page_segments = [s for s in result.segments if s.page_no is not None]
+    assert len(page_segments) >= 1
 
 
 def test_ingest_pdf_chunked_not_single_blob(tmp_path):
-    """Store is chunk-based; full text was not passed as single blob."""
+    """Result is segment-based; no single multi-megabyte blob."""
     pdf_path = tmp_path / "chunked.pdf"
     w = PdfWriter()
     w.add_blank_page(612, 792)
     with open(pdf_path, "wb") as f:
         w.write(f)
-    store = ingest_pdf(str(pdf_path))
-    assert isinstance(store, DocStore)
-    assert len(store.chunks) >= 1
-    # Chunked design: no single multi-megabyte blob
-    for c in store.chunks:
-        assert len(c) < 50_000
+    result = ingest_pdf(str(pdf_path))
+    assert isinstance(result, PDFIngestionResult)
+    assert len(result.segments) >= 1
+    for s in result.segments:
+        assert len(s.text) < 50_000
 
 
 def test_ingest_pdf_missing_file():
@@ -57,11 +91,24 @@ def test_ingest_pdf_missing_file():
         ingest_pdf("/nonexistent/path.pdf")
 
 
+def test_ingest_pdf_corrupt_raises_parse_error(tmp_path):
+    """Corrupt or non-PDF file raises PDFParseError, not raw pypdf exception."""
+    bad_path = tmp_path / "not-a-pdf.pdf"
+    bad_path.write_text("not a pdf binary content")
+    with pytest.raises(PDFParseError) as exc_info:
+        ingest_pdf(str(bad_path))
+    assert "parsing" in str(exc_info.value).lower() or "pdf" in str(exc_info.value).lower()
+
+
 def test_query_doc_returns_string():
-    """query_doc returns str even when no match."""
+    """query_doc returns str even when no match; works with DocStore and PDFIngestionResult."""
     store = DocStore(chunks=["chunk one", "chunk two"], source_path="")
     out = query_doc(store, "nonexistent keyword xyz")
     assert isinstance(out, str)
+    result = PDFIngestionResult(segments=[ChunkSegment(text="chunk one")], source_path="")
+    out2 = query_doc(result, "chunk")
+    assert isinstance(out2, str)
+    assert "chunk" in out2
 
 
 def test_extract_images_from_pdf_no_images(tmp_path):

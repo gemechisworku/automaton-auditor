@@ -81,3 +81,19 @@ def test_default_output_path():
     assert "report_" in p
     assert "Hello-World" in p or "Hello_World" in p
     assert p.endswith(".md")
+
+
+def test_conditional_edge_degraded_path_when_critical_failure():
+    """When all evidence is failure (e.g. invalid repo, missing PDF), graph takes degraded path and produces a report."""
+    from src.graph import build_audit_graph
+
+    # Invalid repo URL and missing PDF so all detectives produce confidence=0 evidence → conditional routes to degraded_report
+    state = create_initial_state("https://github.com/invalid-repo-that-does-not-exist-xyz/abc", "/nonexistent/file.pdf")
+
+    graph = build_audit_graph().compile()
+    final = graph.invoke(state)
+
+    assert final.get("final_report") is not None
+    report = final["final_report"]
+    summary = report.executive_summary if hasattr(report, "executive_summary") else str(report)
+    assert "degraded" in summary.lower() or "re-run" in summary.lower() or "unavailable" in summary.lower()

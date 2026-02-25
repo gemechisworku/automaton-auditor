@@ -1,5 +1,6 @@
 """
 PDF and vision forensic tools. Chunked ingestion (RAG-lite); image extraction; diagram analysis.
+Explicit RAG-like interface: chunked, queryable segments (page/semantic) + query function.
 API Contracts §5.2; SRS FR-8, FR-9.
 """
 
@@ -8,7 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pypdf import PdfReader
 
@@ -18,48 +19,129 @@ _CHUNK_SIZE = 1500
 _CHUNK_OVERLAP = 100
 
 
+class PDFParseError(Exception):
+    """Raised when PDF parsing fails (corrupt file, unsupported format, etc.)."""
+
+    def __init__(self, message: str, path: str = "", cause: Exception | None = None):
+        self.path = path
+        self.cause = cause
+        super().__init__(message or f"PDF parsing failed: {path}")
+
+
+@dataclass
+class ChunkSegment:
+    """A single queryable segment (page-bound or character-bound) for RAG retrieval."""
+
+    text: str
+    page_no: int | None = None  # 1-based; None for merged char chunks
+
+
+@dataclass
+class PDFIngestionResult:
+    """
+    RAG-like result of PDF ingestion: chunked, queryable segments plus a query function.
+    Does not dump full document text; retrieval is via query(question).
+    """
+
+    segments: list[ChunkSegment]
+    source_path: str
+
+    def query(self, question: str, top_k: int = 5) -> str:
+        """Return relevant excerpts for the question (chunked retrieval)."""
+        texts = [s.text for s in self.segments]
+        relevant = _search_chunks(texts, question, top_k)
+        if not relevant:
+            return "No relevant excerpts found."
+        return "\n\n---\n\n".join(relevant)
+
+    def get_segments(self) -> list[ChunkSegment]:
+        """Return the chunked segments (e.g. for inspection or custom retrieval)."""
+        return list(self.segments)
+
+
+def _search_chunks(chunks: list[str], question: str, top_k: int = 5) -> list[str]:
+    """Return chunks most relevant to question (simple keyword overlap)."""
+    q_lower = question.lower()
+    q_words = set(w for w in q_lower.split() if len(w) > 2)
+    scored = []
+    for c in chunks:
+        c_lower = c.lower()
+        score = sum(1 for w in q_words if w in c_lower)
+        if score > 0:
+            scored.append((score, c))
+    scored.sort(key=lambda x: -x[0])
+    return [c for _, c in scored[:top_k]]
+
+
 @dataclass
 class DocStore:
-    """Queryable store of chunked PDF text (RAG-lite)."""
+    """
+    Queryable store of chunked PDF text (RAG-lite).
+    Implements the same RAG contract as PDFIngestionResult; kept for backward compatibility.
+    """
 
     chunks: list[str]
     source_path: str
 
     def search_chunks(self, question: str, top_k: int = 5) -> list[str]:
         """Return chunks most relevant to question (simple keyword overlap)."""
-        q_lower = question.lower()
-        q_words = set(w for w in q_lower.split() if len(w) > 2)
-        scored = []
-        for c in self.chunks:
-            c_lower = c.lower()
-            score = sum(1 for w in q_words if w in c_lower)
-            if score > 0:
-                scored.append((score, c))
-        scored.sort(key=lambda x: -x[0])
-        return [c for _, c in scored[:top_k]]
+        return _search_chunks(self.chunks, question, top_k)
+
+    def query(self, question: str, top_k: int = 5) -> str:
+        """RAG-like query: return relevant excerpts for the question."""
+        relevant = self.search_chunks(question, top_k)
+        if not relevant:
+            return "No relevant excerpts found."
+        return "\n\n---\n\n".join(relevant)
 
 
-def ingest_pdf(pdf_path: str) -> DocStore:
+def ingest_pdf(
+    pdf_path: str,
+    chunk_by: Literal["char", "page"] = "char",
+) -> PDFIngestionResult:
     """
-    Chunk PDF text; return queryable store. Does not dump full text into a single string (SRS FR-8).
+    Ingest PDF into chunked, queryable segments (RAG-like; no full-text dump). SRS FR-8.
+    - chunk_by="char": merge pages then split by character count (default).
+    - chunk_by="page": one segment per page (page-bound chunks).
+    Raises FileNotFoundError if file missing; PDFParseError on parse/corrupt PDF.
     """
     path = Path(pdf_path)
     if not path.is_file():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-    reader = PdfReader(pdf_path)
-    all_texts: list[str] = []
-    for page in reader.pages:
+    try:
+        reader = PdfReader(pdf_path)
+    except Exception as e:
+        raise PDFParseError(
+            f"PDF parsing failed: {pdf_path}. {type(e).__name__}: {e}",
+            path=pdf_path,
+            cause=e,
+        ) from e
+
+    page_texts: list[tuple[int, str]] = []  # 1-based page_no, text
+    for i, page in enumerate(reader.pages):
         try:
             t = page.extract_text()
-            if t:
-                all_texts.append(t)
-        except Exception:
-            continue
+            page_texts.append((i + 1, (t or "").strip() or "(no text)"))
+        except Exception as e:
+            raise PDFParseError(
+                f"Failed to extract text from page {i + 1}: {pdf_path}. {type(e).__name__}: {e}",
+                path=pdf_path,
+                cause=e,
+            ) from e
 
-    full = "\n\n".join(all_texts)
-    chunks = _split_into_chunks(full, _CHUNK_SIZE, _CHUNK_OVERLAP)
-    return DocStore(chunks=chunks, source_path=pdf_path)
+    if chunk_by == "page":
+        segments = [ChunkSegment(text=t, page_no=p) for p, t in page_texts]
+        if not segments:
+            segments = [ChunkSegment(text="(no text extracted)", page_no=None)]
+    else:
+        full = "\n\n".join(t for _, t in page_texts)
+        chunks = _split_into_chunks(full, _CHUNK_SIZE, _CHUNK_OVERLAP)
+        segments = [ChunkSegment(text=c, page_no=None) for c in chunks]
+        if not segments:
+            segments = [ChunkSegment(text="(no text)", page_no=None)]
+
+    return PDFIngestionResult(segments=segments, source_path=pdf_path)
 
 
 def _split_into_chunks(text: str, size: int, overlap: int) -> list[str]:
@@ -74,8 +156,10 @@ def _split_into_chunks(text: str, size: int, overlap: int) -> list[str]:
     return out if out else [text[:size].strip() or "(no text)"]
 
 
-def query_doc(store: DocStore, question: str) -> str:
-    """Query the store; return answer or excerpt (chunked retrieval)."""
+def query_doc(store: DocStore | PDFIngestionResult, question: str) -> str:
+    """Query the store (RAG retrieval over chunked segments). Accepts DocStore or PDFIngestionResult."""
+    if hasattr(store, "query") and callable(getattr(store, "query")):
+        return store.query(question)
     relevant = store.search_chunks(question, top_k=5)
     if not relevant:
         return "No relevant excerpts found."
