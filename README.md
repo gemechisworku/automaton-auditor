@@ -35,8 +35,9 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 - `src/tools/repo_tools.py` — Sandboxed clone, git history, AST-based graph structure analysis.
 - `src/tools/doc_tools.py` — PDF ingest (chunked/RAG-lite), query_doc, image extraction, analyze_diagram (vision optional).
 - `src/nodes/detectives.py` — RepoInvestigator, DocAnalyst, VisionInspector (return evidences per dimension).
-- `src/nodes/justice.py` — EvidenceAggregator (Phase 2); ChiefJusticeNode (Phase 4).
-- `src/graph.py` — StateGraph: START → parallel detectives → EvidenceAggregator → END (Phase 2).
+- `src/nodes/judges.py` — Prosecutor, Defense, Tech Lead (structured output per dimension; OPENAI_API_KEY).
+- `src/nodes/justice.py` — EvidenceAggregator, judge_collector; ChiefJusticeNode (Phase 4).
+- `src/graph.py` — `build_detective_graph()` (Phase 2); `build_audit_graph()` (Phase 3: + parallel Judges → END).
 - `rubric.json` — Machine-readable rubric (dimensions, synthesis rules).
 - `specs/` — System requirements, architecture, API contracts.
 

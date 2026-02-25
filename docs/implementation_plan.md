@@ -120,11 +120,11 @@ This plan organizes implementation into **phases that can be tested independentl
 
 ### 3.1 Deliverables
 
-- [ ] **`src/nodes/judges.py`**
+- [x] **`src/nodes/judges.py`**
   - Per-persona logic (or one dispatcher): given `(state, dimension_id)` (or dimension object), build prompt with dimension’s forensic result and rubric text; call LLM with `.with_structured_output(JudicialOpinion)` (or `.bind_tools()` to same schema).
   - **Prosecutor**, **Defense**, **Tech Lead** — Distinct system prompts (adversarial, forgiving, pragmatic); same `JudicialOpinion` schema; retry or error on parse failure.
   - Nodes return `{"opinions": [JudicialOpinion, ...]}` (one per judge per dimension, or batched).
-- [ ] **Graph extension in `src/graph.py`**
+- [x] **Graph extension in `src/graph.py`**
   - After EvidenceAggregator: for each dimension (or in one parallel block), run Prosecutor, Defense, Tech Lead in parallel; append their opinions to state via reducer.
   - Graph ends after all Judge outputs are collected (no Chief Justice yet); or add a “judge_collector” node that just passes through.
 
