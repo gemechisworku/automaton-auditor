@@ -114,10 +114,10 @@ def build_audit_graph() -> StateGraph:
 
 def create_initial_state(
     repo_url: str,
-    pdf_path: str,
+    pdf_path: str = "",
     rubric_path: str | None = None,
 ) -> AgentState:
-    """Build initial AgentState for the graph."""
+    """Build initial AgentState for the graph. pdf_path may be empty for repo-only audit."""
     default_rubric = "rubric.json"
     path = Path(rubric_path or default_rubric)
     dimensions = load_rubric_dimensions(rubric_path)

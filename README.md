@@ -32,17 +32,24 @@ Automated quality-assurance swarm that audits GitHub repositories and PDF report
 From the project root (so `.env` is found):
 
 ```bash
-uv run python -m src.run <repo_url> <pdf_path> [--rubric path] [--output path]
+uv run python -m src.run <repo_url> [pdf_path] [--rubric path] [--output path]
 ```
 
-Example:
+- **Repo only:** Omit `pdf_path` to audit the repository without a PDF (Doc/Vision criteria will report no PDF).
+- **With PDF:** Pass a local path to the PDF report.
+
+Examples:
 
 ```bash
+# Repo-only audit
+uv run python -m src.run https://github.com/octocat/Hello-World --output audit/report.md
+
+# Repo + PDF report
 uv run python -m src.run https://github.com/octocat/Hello-World report.pdf --output audit/report.md
 ```
 
 - **Where the report is written:** To the path given by `--output`, or by default **`audit/report_<repo_slug>.md`** (e.g. `audit/report_Hello-World.md`). The file is Markdown: Executive Summary, Criterion Breakdown, Remediation Plan.
-- **Errors:** Missing `OPENAI_API_KEY`, empty `repo_url`/`pdf_path`, or invalid rubric produce a clear error message and exit code 1.
+- **Errors:** Missing `OPENAI_API_KEY`, empty `repo_url`, or invalid rubric produce a clear error message and exit code 1.
 
 ## Observability (LangSmith)
 
@@ -71,7 +78,7 @@ On Linux/macOS use `$(pwd)` instead of `%cd%`. Ensure `.env` contains `OPENAI_AP
 - `src/nodes/judges.py` — Prosecutor, Defense, Tech Lead (structured output per dimension; OPENAI_API_KEY).
 - `src/nodes/justice.py` — EvidenceAggregator, judge_collector; ChiefJusticeNode (Phase 4).
 - `src/graph.py` — `build_detective_graph()`, `build_audit_graph()` (through Chief Justice), `create_initial_state`, `run_audit`.
-- `src/run.py` — Entry point `run_audit(repo_url, pdf_path, rubric_path?, output_path?)` and CLI `python -m src.run`.
+- `src/run.py` — Entry point `run_audit(repo_url, pdf_path?, rubric_path?, output_path?)` and CLI `python -m src.run`.
 - `rubric.json` — Machine-readable rubric (dimensions, synthesis rules).
 - `specs/` — System requirements, architecture, API contracts.
 

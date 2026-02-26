@@ -1,7 +1,8 @@
 """
-Entry point: run_audit(repo_url, pdf_path, rubric_path?, output_path?).
+Entry point: run_audit(repo_url, pdf_path?, rubric_path?, output_path?).
 Loads .env so OPENAI_API_KEY is available for Judge nodes; validates inputs and env;
 loads rubric, builds state, compiles graph, invokes, writes Markdown report. API Contracts §2.
+PDF path is optional: omit for repo-only audit (Doc/Vision evidence will report no PDF).
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ def _require_llm_key() -> None:
 
 def run_audit(
     repo_url: str,
-    pdf_path: str,
+    pdf_path: str | None = None,
     rubric_path: str | None = None,
     output_path: str | None = None,
 ) -> AuditReport | None:
@@ -47,7 +48,7 @@ def run_audit(
 
     Args:
         repo_url: GitHub (or other) repository URL to audit.
-        pdf_path: Local path to the PDF report.
+        pdf_path: Optional local path to a PDF report. Omit for repo-only audit.
         rubric_path: Path to rubric.json. Defaults to rubric.json.
         output_path: Where to write the Markdown report. Defaults to audit/report_<repo_slug>.md.
 
@@ -55,15 +56,13 @@ def run_audit(
         The AuditReport from state, or None if the graph did not produce one (e.g. failure).
 
     Raises:
-        ValueError: If repo_url or pdf_path are invalid.
+        ValueError: If repo_url is invalid.
         RuntimeError: If required env (e.g. OPENAI_API_KEY) is missing.
     """
     repo_url = (repo_url or "").strip()
     if not repo_url:
         raise ValueError("repo_url is required and must be non-empty.")
-    pdf_path = (pdf_path or "").strip()
-    if not pdf_path:
-        raise ValueError("pdf_path is required and must be non-empty.")
+    pdf_path = (pdf_path or "").strip() or None
     _require_llm_key()
     dimensions = load_rubric_dimensions(rubric_path)
     if not dimensions:
@@ -72,7 +71,7 @@ def run_audit(
         )
     state = create_initial_state(
         repo_url=repo_url,
-        pdf_path=pdf_path,
+        pdf_path=pdf_path or "",
         rubric_path=rubric_path,
     )
     graph = build_audit_graph().compile()
@@ -91,13 +90,18 @@ def run_audit(
 
 
 def main() -> None:
-    """CLI entry: python -m src.run repo_url pdf_path [--rubric path] [--output path]"""
+    """CLI entry: python -m src.run repo_url [pdf_path] [--rubric path] [--output path]"""
     import argparse
     parser = argparse.ArgumentParser(
-        description="Run Automaton Auditor: audit a GitHub repo and PDF report."
+        description="Run Automaton Auditor: audit a GitHub repo (and optionally a PDF report)."
     )
     parser.add_argument("repo_url", help="Repository URL to audit (e.g. https://github.com/org/repo)")
-    parser.add_argument("pdf_path", help="Path to the PDF report file")
+    parser.add_argument(
+        "pdf_path",
+        nargs="?",
+        default=None,
+        help="Optional path to a PDF report. Omit for repo-only audit.",
+    )
     parser.add_argument("--rubric", dest="rubric_path", default=None, help="Path to rubric.json (default: rubric.json)")
     parser.add_argument("--output", dest="output_path", default=None, help="Output Markdown path (default: audit/report_<slug>.md)")
     args = parser.parse_args()
