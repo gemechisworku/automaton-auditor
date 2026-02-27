@@ -2,7 +2,7 @@
 Entry point: run_audit(repo_url, pdf_path?, rubric_path?, output_path?).
 Loads .env so OPENAI_API_KEY is available for Judge nodes; validates inputs and env;
 loads rubric, builds state, compiles graph, invokes, writes Markdown report. API Contracts §2.
-PDF path is optional: omit for repo-only audit (Doc/Vision evidence will report no PDF).
+When pdf_path is omitted, uses reports/final_report.pdf inside the cloned repo under evaluation.
 """
 
 from __future__ import annotations
@@ -20,6 +20,10 @@ load_dotenv()
 from src.graph import build_audit_graph, create_initial_state, load_rubric_dimensions
 from src.nodes.justice import write_report_to_path
 from src.state import AuditReport
+from src.tools.repo_tools import RepoCloneError, clone_repo
+
+# Default PDF path relative to the repo under evaluation (when pdf_path is omitted)
+DEFAULT_PDF_IN_REPO = "reports/final_report.pdf"
 
 
 def _default_output_path(repo_url: str) -> str:
@@ -48,7 +52,7 @@ def run_audit(
 
     Args:
         repo_url: GitHub (or other) repository URL to audit.
-        pdf_path: Optional local path to a PDF report. Omit for repo-only audit.
+        pdf_path: Optional path to a PDF report. When omitted, uses reports/final_report.pdf inside the cloned repo under evaluation.
         rubric_path: Path to rubric.json. Defaults to rubric.json.
         output_path: Where to write the Markdown report. Defaults to audit/report_<repo_slug>.md.
 
@@ -63,6 +67,14 @@ def run_audit(
     if not repo_url:
         raise ValueError("repo_url is required and must be non-empty.")
     pdf_path = (pdf_path or "").strip() or None
+    repo_path: str | None = None
+    if pdf_path is None:
+        # Default PDF is relative to the repo under evaluation: clone first, then resolve path
+        try:
+            repo_path = clone_repo(repo_url)
+            pdf_path = str(Path(repo_path) / DEFAULT_PDF_IN_REPO)
+        except RepoCloneError:
+            pdf_path = ""  # repo-only if clone fails or no default PDF
     _require_llm_key()
     dimensions = load_rubric_dimensions(rubric_path)
     if not dimensions:
@@ -71,8 +83,9 @@ def run_audit(
         )
     state = create_initial_state(
         repo_url=repo_url,
-        pdf_path=pdf_path or "",
+        pdf_path=pdf_path,
         rubric_path=rubric_path,
+        repo_path=repo_path,
     )
     graph = build_audit_graph().compile()
     try:
@@ -100,7 +113,7 @@ def main() -> None:
         "pdf_path",
         nargs="?",
         default=None,
-        help="Optional path to a PDF report. Omit for repo-only audit.",
+        help=f"Path to PDF report (default: {DEFAULT_PDF_IN_REPO} inside the repo under evaluation).",
     )
     parser.add_argument("--rubric", dest="rubric_path", default=None, help="Path to rubric.json (default: rubric.json)")
     parser.add_argument("--output", dest="output_path", default=None, help="Output Markdown path (default: audit/report_<slug>.md)")

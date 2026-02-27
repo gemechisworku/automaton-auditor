@@ -156,6 +156,49 @@ def _split_into_chunks(text: str, size: int, overlap: int) -> list[str]:
     return out if out else [text[:size].strip() or "(no text)"]
 
 
+def extract_claimed_paths_from_text(text: str) -> list[str]:
+    """
+    Extract file/path-like strings from text (e.g. PDF report content) for cross-reference.
+    Returns a list of normalized path-like strings (e.g. src/graph.py, docs/readme.md).
+    """
+    import re
+    # Match path-like patterns: word/word, word/word/word, src/foo.py, etc.
+    pattern = r'\b(?:src|docs|tests|scripts?|config)/[a-zA-Z0-9_./\-]+\.[a-zA-Z0-9]+\b|\b[a-zA-Z0-9_]+/[a-zA-Z0-9_./\-]+\b'
+    found = re.findall(pattern, text)
+    # Normalize and dedupe
+    normalized = []
+    seen = set()
+    for p in found:
+        p = p.strip().replace("\\", "/")
+        if p and p not in seen and 1 < len(p) < 200:
+            seen.add(p)
+            normalized.append(p)
+    return normalized
+
+
+def cross_reference_report_claims(
+    claimed_paths: list[str], repo_file_list: list[str]
+) -> dict[str, list[str]]:
+    """
+    Cross-reference claimed file paths (e.g. from PDF report) with repo file list.
+    Returns {"verified": [...], "unverified": [...]}.
+    """
+    repo_set = set(f.replace("\\", "/") for f in repo_file_list)
+    verified = []
+    unverified = []
+    for p in claimed_paths:
+        p_norm = p.replace("\\", "/")
+        if p_norm in repo_set:
+            verified.append(p_norm)
+        else:
+            # Check for partial match (e.g. claimed src/graph.py vs repo has src/graph.py)
+            if any(p_norm in r or r.endswith(p_norm) for r in repo_set):
+                verified.append(p_norm)
+            else:
+                unverified.append(p_norm)
+    return {"verified": verified, "unverified": unverified}
+
+
 def query_doc(store: DocStore | PDFIngestionResult, question: str) -> str:
     """Query the store (RAG retrieval over chunked segments). Accepts DocStore or PDFIngestionResult."""
     if hasattr(store, "query") and callable(getattr(store, "query")):
@@ -169,7 +212,14 @@ def query_doc(store: DocStore | PDFIngestionResult, question: str) -> str:
 def extract_images_from_pdf(pdf_path: str) -> list[Any]:
     """
     Extract images from PDF for VisionInspector. Returns list of image-like objects
-    (PIL Image or bytes). Uses pypdf page.images where available.
+    (PIL Image or bytes). Requires pypdf[image] (Pillow) for extraction.
+
+    Uses pypdf page.images: iterates over each page's images and collects PIL Images
+    (or raw bytes if .image is not available). If Pillow is not installed, returns [].
+
+    Limitation (VISION-1): Many PDFs embed diagrams as vector graphics (drawing operations)
+    rather than embedded image objects. In those cases page.images may be empty even when
+    the PDF contains diagrams. VisionInspector will then report "No images extracted from PDF."
     """
     path = Path(pdf_path)
     if not path.is_file():
@@ -182,16 +232,22 @@ def extract_images_from_pdf(pdf_path: str) -> list[Any]:
             img_attr = getattr(page, "images", None)
             if img_attr is None:
                 continue
-            # pypdf 4: page.images is dict-like; iterate keys for error handling
-            for name in (img_attr.keys() if hasattr(img_attr, "keys") else []):
+            # pypdf 4+: page.images is iterable; each item is ImageFile (.image = PIL, .data = bytes). Requires Pillow.
+            for img_obj in img_attr:
                 try:
-                    img_obj = img_attr[name]
-                    if hasattr(img_obj, "image"):
+                    if hasattr(img_obj, "image") and img_obj.image is not None:
                         images.append(img_obj.image)
-                    elif hasattr(img_obj, "data"):
+                    elif hasattr(img_obj, "data") and img_obj.data:
                         images.append(img_obj.data)
+                except ImportError:
+                    raise
                 except Exception:
                     continue
+    except ImportError as e:
+        if "pillow" in str(e).lower() or "pypdf" in str(e).lower() or "image" in str(e).lower():
+            pass  # Return [] when pypdf[image] not installed
+        else:
+            raise
     except Exception:
         pass
     return images

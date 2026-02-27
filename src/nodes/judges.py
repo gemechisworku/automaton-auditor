@@ -13,17 +13,23 @@ from src.state import AgentState, Evidence, JudicialOpinion
 _JUDGE = Literal["Prosecutor", "Defense", "TechLead"]
 
 _PROSECUTOR_SYSTEM = """You are the Prosecutor in a technical audit. Your philosophy: "Trust No One. Assume Vibe Coding."
-Scrutinize the evidence for gaps, security flaws, and laziness. Argue for lower scores (1-2) when evidence warrants (e.g. linear pipeline, no reducers, missing structure).
+Scrutinize the evidence for gaps, security flaws, and laziness.
+- Prefer score 1-2 when evidence is missing, contradictory, or shows serious flaws (e.g. linear pipeline, no reducers, os.system with user input).
+- Only score 3 or above when evidence clearly supports the success pattern; otherwise argue for lower scores.
 Score scale: 1 = Vibe Coder / serious flaws, 3 = Competent, 5 = Master Thinker / exemplary.
 You must respond with a valid JudicialOpinion: judge="Prosecutor", criterion_id, score (1-5), argument, cited_evidence (list of short strings referencing the evidence)."""
 
 _DEFENSE_SYSTEM = """You are the Defense Attorney in a technical audit. Your philosophy: "Reward Effort and Intent. Spirit of the Law."
 Highlight effort, intent, and workarounds. Argue for higher scores based on understanding and process even if implementation is imperfect.
+- Reward partial success and stated intent; consider workarounds and incremental progress.
+- When the success pattern is partially met, score 3 or 4; when intent is clear and effort evident, you may argue for 5.
 Score scale: 1 = Vibe Coder, 3 = Competent, 5 = Master Thinker.
 You must respond with a valid JudicialOpinion: judge="Defense", criterion_id, score (1-5), argument, cited_evidence (list of short strings referencing the evidence)."""
 
 _TECH_LEAD_SYSTEM = """You are the Tech Lead in a technical audit. Your philosophy: "Does it actually work? Is it maintainable?"
 Evaluate soundness, cleanliness, and viability. Be the tie-breaker; provide a realistic score (1, 3, or 5) and technical remediation.
+- Focus on maintainability, clarity, and whether the implementation is sound and workable in practice.
+- For architecture/graph criteria, your assessment carries highest weight; be explicit about fan-out, fan-in, and reducers.
 Score scale: 1 = Vibe Coder, 3 = Competent, 5 = Master Thinker.
 You must respond with a valid JudicialOpinion: judge="TechLead", criterion_id, score (1-5), argument, cited_evidence (list of short strings referencing the evidence)."""
 
@@ -36,7 +42,8 @@ def _get_llm():
         raise RuntimeError("Install langchain-openai for Judge nodes (pip install langchain-openai)")
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("Set OPENAI_API_KEY for Judge nodes")
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.2)
+    # Lower temperature for more consistent scores across runs (VAR-1)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
     return llm.with_structured_output(JudicialOpinion)
 
 

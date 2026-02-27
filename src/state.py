@@ -58,6 +58,12 @@ class AuditReport(BaseModel):
 
 
 # ----- Graph state (TypedDict with reducers for parallel nodes) -----
+#
+# Reducers (LangGraph applies these when merging partial state updates from parallel nodes):
+#   - evidences: operator.ior — merge dicts by key; each node returns {"evidences": {dimension_id: [Evidence, ...]}}.
+#   - opinions:  operator.add — concatenate lists; each Judge returns {"opinions": [JudicialOpinion, ...]}.
+# All other keys (repo_url, pdf_path, rubric_dimensions, final_report, repo_file_list) are overwritten
+# by the last writer; only evidences and opinions use reducers for parallel-written state.
 
 
 class AgentState(TypedDict, total=False):
@@ -67,9 +73,11 @@ class AgentState(TypedDict, total=False):
     """
 
     repo_url: str
+    repo_path: str | None  # optional; when set, RepoInvestigator reuses this path instead of cloning
     pdf_path: str
     rubric_path: str | None  # optional; Chief Justice loads synthesis_rules from here
     rubric_dimensions: list[dict[str, Any]]
     evidences: Annotated[dict[str, list[Evidence]], operator.ior]
     opinions: Annotated[list[JudicialOpinion], operator.add]
     final_report: AuditReport | None
+    repo_file_list: list[str]  # optional; set by RepoInvestigator for cross-reference (report_accuracy)

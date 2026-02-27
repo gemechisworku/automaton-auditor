@@ -9,6 +9,7 @@ import pytest
 
 from src.graph import build_audit_graph, create_initial_state
 from src.nodes.justice import (
+    _resolve_final_score,
     audit_report_to_markdown,
     chief_justice_node,
     write_report_to_path,
@@ -101,6 +102,45 @@ def test_variance_gt_2_includes_dissent_summary():
     c = report.criteria[0]
     assert c.dissent_summary is not None
     assert "Variance" in c.dissent_summary or "Tech Lead" in c.dissent_summary
+
+
+def test_resolve_final_score_architecture_uses_tech_lead():
+    """CJ-2: When dimension name contains 'architecture' or 'graph', final score = Tech Lead score."""
+    opinions = [
+        JudicialOpinion(judge="Prosecutor", criterion_id="g", score=1, argument=".", cited_evidence=[]),
+        JudicialOpinion(judge="Defense", criterion_id="g", score=4, argument=".", cited_evidence=[]),
+        JudicialOpinion(judge="TechLead", criterion_id="g", score=5, argument=".", cited_evidence=[]),
+    ]
+    score, dissent = _resolve_final_score(
+        opinions, "Graph Orchestration Architecture", [], {}
+    )
+    assert score == 5
+    assert dissent is not None  # variance 4 so dissent set
+
+
+def test_resolve_final_score_security_caps_at_3():
+    """CJ-2: Security issue in evidence caps final score at 3."""
+    opinions = [
+        JudicialOpinion(judge="Prosecutor", criterion_id="s", score=1, argument=".", cited_evidence=[]),
+        JudicialOpinion(judge="Defense", criterion_id="s", score=5, argument=".", cited_evidence=[]),
+        JudicialOpinion(judge="TechLead", criterion_id="s", score=5, argument=".", cited_evidence=[]),
+    ]
+    ev = [Evidence(goal="g", found=True, content="os.system with user input", location="x", rationale="r", confidence=0.9)]
+    score, _ = _resolve_final_score(opinions, "Safe Tool", ev, {})
+    assert score <= 3
+
+
+def test_resolve_final_score_variance_uses_tech_lead_and_dissent():
+    """CJ-2: Variance > 2 uses Tech Lead score and sets dissent_summary."""
+    opinions = [
+        JudicialOpinion(judge="Prosecutor", criterion_id="d", score=1, argument=".", cited_evidence=[]),
+        JudicialOpinion(judge="Defense", criterion_id="d", score=5, argument=".", cited_evidence=[]),
+        JudicialOpinion(judge="TechLead", criterion_id="d", score=3, argument=".", cited_evidence=[]),
+    ]
+    score, dissent = _resolve_final_score(opinions, "Some Criterion", [], {})
+    assert score == 3
+    assert dissent is not None
+    assert "Tech Lead" in dissent
 
 
 def test_report_markdown_structure():

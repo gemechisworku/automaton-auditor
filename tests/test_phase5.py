@@ -37,12 +37,23 @@ def test_run_audit_invalid_repo_url_raises():
         assert "repo_url" in str(exc_info.value).lower()
 
 
-def test_run_audit_invalid_pdf_path_raises():
-    """Empty pdf_path raises ValueError."""
+def test_run_audit_empty_pdf_path_allowed():
+    """Empty pdf_path is allowed (repo-only audit); no ValueError at entry."""
+    from src.state import AuditReport
+
     with patch("src.run._require_llm_key"):
-        with pytest.raises(ValueError) as exc_info:
+        with patch("src.run.build_audit_graph") as mock_build:
+            mock_graph = mock_build.return_value.compile.return_value
+            mock_graph.invoke.return_value = {"final_report": AuditReport(
+                repo_url="https://github.com/a/b",
+                executive_summary="Test.",
+                overall_score=3.0,
+                criteria=[],
+                remediation_plan="",
+            )}
+            # Empty or None pdf_path must not raise ValueError
+            run_audit("https://github.com/a/b", None)
             run_audit("https://github.com/a/b", "")
-        assert "pdf_path" in str(exc_info.value).lower()
 
 
 def test_run_audit_missing_rubric_raises():

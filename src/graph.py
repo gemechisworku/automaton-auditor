@@ -116,17 +116,22 @@ def create_initial_state(
     repo_url: str,
     pdf_path: str = "",
     rubric_path: str | None = None,
+    repo_path: str | None = None,
 ) -> AgentState:
-    """Build initial AgentState for the graph. pdf_path may be empty for repo-only audit."""
+    """Build initial AgentState for the graph. pdf_path may be empty for repo-only audit.
+    When repo_path is set (e.g. pre-cloned for default PDF), RepoInvestigator will reuse it."""
     default_rubric = "rubric.json"
     path = Path(rubric_path or default_rubric)
     dimensions = load_rubric_dimensions(rubric_path)
-    return AgentState(
-        repo_url=repo_url,
-        pdf_path=pdf_path,
-        rubric_path=str(path.resolve()) if path.is_file() else default_rubric,
-        rubric_dimensions=dimensions,
-        evidences={},
-        opinions=[],
-        final_report=None,
-    )
+    state: AgentState = {
+        "repo_url": repo_url,
+        "pdf_path": pdf_path,
+        "rubric_path": str(path.resolve()) if path.is_file() else default_rubric,
+        "rubric_dimensions": dimensions,
+        "evidences": {},
+        "opinions": [],
+        "final_report": None,
+    }
+    if repo_path:
+        state["repo_path"] = repo_path
+    return state

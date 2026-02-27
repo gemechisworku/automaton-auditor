@@ -9,8 +9,24 @@ from unittest.mock import patch
 import pytest
 
 from src.graph import build_audit_graph, create_initial_state
-from src.nodes.judges import prosecutor_node
+from src.nodes.judges import (
+    _DEFENSE_SYSTEM,
+    _PROSECUTOR_SYSTEM,
+    _TECH_LEAD_SYSTEM,
+    prosecutor_node,
+)
 from src.state import Evidence, JudicialOpinion
+
+
+def test_judge_system_prompts_are_distinct():
+    """JUDGE-2: The three judge personas have distinct system prompts (no overlap)."""
+    assert _PROSECUTOR_SYSTEM != _DEFENSE_SYSTEM
+    assert _DEFENSE_SYSTEM != _TECH_LEAD_SYSTEM
+    assert _PROSECUTOR_SYSTEM != _TECH_LEAD_SYSTEM
+    # Each prompt should contain persona-specific keywords
+    assert "Prosecutor" in _PROSECUTOR_SYSTEM and "Vibe Coding" in _PROSECUTOR_SYSTEM
+    assert "Defense" in _DEFENSE_SYSTEM and "Spirit of the Law" in _DEFENSE_SYSTEM
+    assert "Tech Lead" in _TECH_LEAD_SYSTEM and "maintainable" in _TECH_LEAD_SYSTEM
 
 
 @pytest.fixture

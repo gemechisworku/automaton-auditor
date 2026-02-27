@@ -35,16 +35,16 @@ From the project root (so `.env` is found):
 uv run python -m src.run <repo_url> [pdf_path] [--rubric path] [--output path]
 ```
 
-- **Repo only:** Omit `pdf_path` to audit the repository without a PDF (Doc/Vision criteria will report no PDF).
-- **With PDF:** Pass a local path to the PDF report.
+- **Default PDF:** If you omit `pdf_path`, the auditor clones the repo and uses **`reports/final_report.pdf`** inside that repo (relative to the repo under evaluation).
+- **Custom PDF:** Pass a path to use a different PDF (e.g. a local file or a path inside the cloned repo).
 
 Examples:
 
 ```bash
-# Repo-only audit
+# Use default PDF (reports/final_report.pdf inside the cloned repo)
 uv run python -m src.run https://github.com/octocat/Hello-World --output audit/report.md
 
-# Repo + PDF report
+# Use a specific PDF
 uv run python -m src.run https://github.com/octocat/Hello-World report.pdf --output audit/report.md
 ```
 
@@ -69,11 +69,16 @@ docker run --env-file .env -v "%cd%\audit:/app/audit" -v "%cd%\report.pdf:/app/r
 
 On Linux/macOS use `$(pwd)` instead of `%cd%`. Ensure `.env` contains `OPENAI_API_KEY` and any PDF is mounted where `pdf_path` points.
 
+## State management
+
+Parallel nodes write to shared state; **reducers** merge their updates: `evidences` uses `operator.ior` (merge dicts by key), `opinions` uses `operator.add` (concatenate lists). See **`REDUCERS.md`** for how parallel detectives and judges contribute to state.
+
 ## Project layout
 
-- `src/state.py` — State and data types (Evidence, JudicialOpinion, AuditReport, AgentState).
+- `src/state.py` — State and data types (Evidence, JudicialOpinion, AuditReport, AgentState); reducers for evidences/opinions.
+- `REDUCERS.md` — How parallel nodes write to state and how reducers merge them.
 - `src/tools/repo_tools.py` — Sandboxed clone, git history, AST-based graph structure analysis.
-- `src/tools/doc_tools.py` — PDF ingest (chunked/RAG-lite), query_doc, image extraction, analyze_diagram (vision optional).
+- `src/tools/doc_tools.py` — PDF ingest (chunked/RAG-lite), query_doc, image extraction (requires Pillow via `pypdf[image]` for diagram analysis), analyze_diagram (vision optional).
 - `src/nodes/detectives.py` — RepoInvestigator, DocAnalyst, VisionInspector (return evidences per dimension).
 - `src/nodes/judges.py` — Prosecutor, Defense, Tech Lead (structured output per dimension; OPENAI_API_KEY).
 - `src/nodes/justice.py` — EvidenceAggregator, judge_collector; ChiefJusticeNode (Phase 4).

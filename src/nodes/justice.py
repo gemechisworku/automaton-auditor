@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from src.state import AgentState, AuditReport, CriterionResult, Evidence, JudicialOpinion
+from src.tools.doc_tools import (
+    cross_reference_report_claims,
+    extract_claimed_paths_from_text,
+    ingest_pdf,
+)
 
 
 def is_critical_failure(state: AgentState) -> bool:
@@ -32,9 +37,48 @@ def evidence_aggregator_node(state: AgentState) -> dict:
     """
     Merge/validation of state["evidences"]. Injects placeholder evidence for any dimension
     with no evidence so the graph can terminate cleanly (SRS FR-19, A2). API Contracts §4.
+    For report_accuracy dimension: performs cross-reference of PDF claimed paths vs repo_file_list
+    (DOC-1, DOC-2) and sets evidence to "Verified paths: ...; Unverified: ...".
     """
     evidences = dict(state.get("evidences") or {})
     dimensions = state.get("rubric_dimensions") or []
+    repo_file_list = state.get("repo_file_list") or []
+    pdf_path = (state.get("pdf_path") or "").strip()
+
+    # report_accuracy: cross-reference claimed paths from PDF with repo file list
+    report_accuracy_dim = next((d for d in dimensions if d.get("id") == "report_accuracy"), None)
+    if report_accuracy_dim and repo_file_list and pdf_path:
+        try:
+            store = ingest_pdf(pdf_path)
+            full_text = " ".join(s.text for s in store.segments)
+            claimed = extract_claimed_paths_from_text(full_text)
+            result = cross_reference_report_claims(claimed, repo_file_list)
+            verified = result["verified"]
+            unverified = result["unverified"]
+            goal = report_accuracy_dim.get("forensic_instruction", "")
+            evidences["report_accuracy"] = [
+                Evidence(
+                    goal=goal,
+                    found=len(verified) > 0 or len(claimed) == 0,
+                    content=f"Verified paths: {verified[:30]}{'...' if len(verified) > 30 else ''}. Unverified/hallucinated: {unverified[:30]}{'...' if len(unverified) > 30 else ''}.",
+                    location=pdf_path,
+                    rationale=f"Cross-referenced {len(claimed)} claimed paths with RepoInvestigator file list. Verified: {len(verified)}; Unverified: {len(unverified)}."
+                    if claimed
+                    else "No path-like claims found in PDF to cross-reference.",
+                    confidence=0.85 if claimed else 0.5,
+                )
+            ]
+        except Exception as e:
+            evidences["report_accuracy"] = [
+                Evidence(
+                    goal=report_accuracy_dim.get("forensic_instruction", ""),
+                    found=False,
+                    location=pdf_path,
+                    rationale=f"Cross-reference failed: {e}.",
+                    confidence=0.0,
+                )
+            ]
+
     for dim in dimensions:
         dim_id = dim.get("id", "unknown")
         if dim_id not in evidences or not evidences[dim_id]:
@@ -99,7 +143,13 @@ def _resolve_final_score(
 ) -> tuple[int, str | None]:
     """
     Apply synthesis rules; return (final_score, dissent_summary).
-    Hardcoded deterministic logic only (no LLM).
+    Hardcoded deterministic logic only (no LLM). Rules applied (CJ-1):
+
+    - functionality_weight: For dimension names containing "architecture" or "graph", use Tech Lead score.
+    - security_override: If evidence indicates security issue (os.system, unsanitized), cap final score at 3.
+    - fact_supremacy: If evidence does not support claims and Defense > Prosecutor, reduce final to max(Prosecutor, Tech Lead).
+    - variance_re_evaluation: When score variance across the three judges > 2, use Tech Lead as final and set dissent_summary.
+    - dissent_requirement: dissent_summary is set when variance > 2 (same as variance_re_evaluation).
     """
     scores = [o.score for o in opinions]
     if not scores:

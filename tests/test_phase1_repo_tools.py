@@ -13,6 +13,7 @@ from src.tools.repo_tools import (
     analyze_graph_structure,
     clone_repo,
     extract_git_history,
+    list_repo_files,
 )
 
 
@@ -41,6 +42,15 @@ def test_clone_repo_invalid_url_raises():
         clone_repo("")
     with pytest.raises(RepoCloneError):
         clone_repo("not-a-url")
+
+
+def test_list_repo_files():
+    """list_repo_files returns list of paths; empty for non-dir (DOC-2)."""
+    repo_path = Path(__file__).resolve().parent.parent
+    paths = list_repo_files(str(repo_path), relative=True)
+    assert isinstance(paths, list)
+    assert all(isinstance(p, str) for p in paths[:10])
+    assert list_repo_files("/nonexistent/dir") == []
 
 
 def test_extract_git_history():

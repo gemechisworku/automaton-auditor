@@ -12,10 +12,23 @@ from src.tools.doc_tools import (
     PDFIngestionResult,
     PDFParseError,
     analyze_diagram,
+    cross_reference_report_claims,
+    extract_claimed_paths_from_text,
     extract_images_from_pdf,
     ingest_pdf,
     query_doc,
 )
+
+
+def test_extract_claimed_paths_and_cross_reference():
+    """extract_claimed_paths_from_text and cross_reference_report_claims (DOC-1)."""
+    text = "See src/graph.py and src/state.py; also docs/readme.md."
+    claimed = extract_claimed_paths_from_text(text)
+    assert "src/graph.py" in claimed or "src/state.py" in claimed or "docs/readme.md" in claimed
+    repo_list = ["src/graph.py", "src/state.py", "tests/test_phase1.py"]
+    result = cross_reference_report_claims(claimed, repo_list)
+    assert "verified" in result and "unverified" in result
+    assert len(result["verified"]) + len(result["unverified"]) >= len(claimed)
 
 
 def test_ingest_pdf_and_query_doc(tmp_path):
@@ -126,6 +139,19 @@ def test_extract_images_from_pdf_no_images(tmp_path):
 def test_extract_images_from_pdf_missing_file():
     images = extract_images_from_pdf("/nonexistent/file.pdf")
     assert images == []
+
+
+def test_extract_images_from_pdf_with_embedded_images():
+    """When PDF has embedded images (and Pillow is installed), extraction returns PIL Images."""
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "reports" / "final_report.pdf"
+    if not path.is_file():
+        pytest.skip("reports/final_report.pdf not found (optional fixture)")
+    images = extract_images_from_pdf(str(path))
+    assert isinstance(images, list)
+    assert len(images) >= 1, "final_report.pdf should contain at least one embedded image"
+    first = images[0]
+    assert hasattr(first, "save") or (isinstance(first, bytes) and len(first) > 0)
 
 
 def test_analyze_diagram_returns_string():

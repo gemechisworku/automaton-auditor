@@ -37,13 +37,19 @@ def clone_repo(repo_url: str) -> str:
         raise RepoCloneError("repo_url must be a non-empty string")
 
     tmp_dir = tempfile.mkdtemp(prefix="automaton_auditor_clone_")
-    # Clone into empty tmp_dir; repo root is tmp_dir (contents + .git live there)
-    result = subprocess.run(
-        ["git", "clone", "--depth", "1", url, tmp_dir],
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    try:
+        # Clone into empty tmp_dir; repo root is tmp_dir (contents + .git live there)
+        result = subprocess.run(
+            ["git", "clone", "--depth", "1", url, tmp_dir],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except FileNotFoundError as e:
+        raise RepoCloneError("git not found (is Git installed and on PATH?)") from e
+    except subprocess.TimeoutExpired as e:
+        raise RepoCloneError(f"git clone timed out after {e.timeout}s") from e
+
     if result.returncode != 0:
         msg = result.stderr or result.stdout or "Unknown git error"
         raise RepoCloneError(f"git clone failed: {msg.strip()}")
@@ -54,6 +60,39 @@ def clone_repo(repo_url: str) -> str:
     return repo_path
 
 
+def list_repo_files(repo_path: str, relative: bool = True) -> list[str]:
+    """
+    List file paths in the repository (for cross-reference with report claims).
+    Uses git ls-files; no os.system, subprocess.run only.
+
+    Args:
+        repo_path: Path to cloned repo root.
+        relative: If True, return paths relative to repo root; else absolute.
+
+    Returns:
+        List of file paths (strings). Empty on error or non-dir.
+    """
+    path = Path(repo_path)
+    if not path.is_dir():
+        return []
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    lines = [line.strip() for line in (result.stdout or "").strip().splitlines() if line.strip()]
+    if relative:
+        return lines
+    return [str(path / p) for p in lines]
+
+
 def extract_git_history(repo_path: str) -> list[dict]:
     """
     Run git log --oneline --reverse with format for commit, message, timestamp.
@@ -62,19 +101,24 @@ def extract_git_history(repo_path: str) -> list[dict]:
     path = Path(repo_path)
     if not path.is_dir():
         return []
-    result = subprocess.run(
-        [
-            "git",
-            "log",
-            "--format=%h %s %ci",
-            "--reverse",
-            "-z",
-        ],
-        cwd=path,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "log",
+                "--format=%h %s %ci",
+                "--reverse",
+                "-z",
+            ],
+            cwd=path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        return []
+    except subprocess.TimeoutExpired:
+        return []
     if result.returncode != 0:
         return []
 

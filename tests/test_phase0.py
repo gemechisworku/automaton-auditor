@@ -83,6 +83,25 @@ def test_reducer_evidences_ior():
     assert merged == {"dim_a": [e1], "dim_b": [e2]}
 
 
+def test_reducer_partial_state_updates_merge_correctly():
+    """Simulate two parallel nodes returning partial evidences; merge matches operator.ior."""
+    from src.state import Evidence
+
+    e_repo = Evidence(goal="repo", found=True, location="/tmp/repo", rationale="Clone OK", confidence=0.9)
+    e_doc = Evidence(goal="doc", found=True, location="report.pdf", rationale="PDF OK", confidence=0.8)
+    # Node A returns {"evidences": {"git_forensic_analysis": [e_repo]}}
+    # Node B returns {"evidences": {"theoretical_depth": [e_doc]}}
+    update_a = {"git_forensic_analysis": [e_repo]}
+    update_b = {"theoretical_depth": [e_doc]}
+    merged = operator.ior(update_a.copy(), update_b)
+    assert "git_forensic_analysis" in merged
+    assert "theoretical_depth" in merged
+    assert len(merged["git_forensic_analysis"]) == 1
+    assert len(merged["theoretical_depth"]) == 1
+    assert merged["git_forensic_analysis"][0].goal == "repo"
+    assert merged["theoretical_depth"][0].goal == "doc"
+
+
 def test_reducer_opinions_add():
     from src.state import JudicialOpinion
 
