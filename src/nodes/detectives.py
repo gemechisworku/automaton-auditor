@@ -134,8 +134,46 @@ def repo_investigator_node(state: AgentState) -> dict[str, Any]:
                 )
             )
 
+        # development_progress (peer rubric): pipeline completeness, git narrative, required files
+        if dim_id == "development_progress" and repo_path:
+            num_commits = len(git_history) if git_history else 0
+            has_graph = graph_struct.get("file_found", False)
+            has_parallel = graph_struct.get("has_parallelism", False)
+            nodes = graph_struct.get("nodes", []) or []
+            has_judges = any("judge" in str(n).lower() or "prosecutor" in str(n).lower() for n in nodes)
+            has_chief = any("chief" in str(n).lower() or "justice" in str(n).lower() for n in nodes)
+            required_files = ["src/state.py", "src/graph.py", "src/tools", "src/nodes", "pyproject.toml", "README.md"]
+            found_files = [f for f in required_files if any(f in p for p in repo_file_list)]
+            has_audit_dir = any("audit" in p for p in repo_file_list)
+            # Heuristic: absent < superficial < partial < complete
+            if num_commits == 0 and not repo_file_list:
+                level_hint = "absent"
+                rationale = "No commits or empty repo."
+                confidence = 0.95
+            elif num_commits <= 1 and not has_graph:
+                level_hint = "superficial"
+                rationale = f"Single or no meaningful commits ({num_commits}); no graph wiring found."
+                confidence = 0.8
+            elif not has_parallel or not has_judges or not has_chief:
+                level_hint = "partial_pipeline"
+                rationale = f"Commits: {num_commits}; graph: {has_graph}; parallel: {has_parallel}; judges: {has_judges}; Chief Justice: {has_chief}. Core infra present; judicial/synthesis incomplete."
+                confidence = 0.85
+            else:
+                level_hint = "complete_system"
+                rationale = f"Commits: {num_commits}; full graph with parallel, judges, Chief Justice; required files: {len(found_files)}/{len(required_files)}; audit dir: {has_audit_dir}."
+                confidence = 0.85
+            dim_evidences.append(
+                Evidence(
+                    goal=goal,
+                    found=level_hint in ("partial_pipeline", "complete_system"),
+                    content=f"Level hint: {level_hint}. {rationale}",
+                    location=repo_path,
+                    rationale=rationale,
+                    confidence=confidence,
+                )
+            )
         # safe_tool_engineering: explicit rationale for auditor (TOOL-2)
-        if dim_id == "safe_tool_engineering" and repo_path:
+        elif dim_id == "safe_tool_engineering" and repo_path:
             dim_evidences.append(
                 Evidence(
                     goal=goal,
@@ -162,6 +200,8 @@ def repo_investigator_node(state: AgentState) -> dict[str, Any]:
     out: dict[str, Any] = {"evidences": evidences}
     if repo_file_list:
         out["repo_file_list"] = repo_file_list
+    if repo_path:
+        out["repo_path"] = repo_path
     return out
 
 

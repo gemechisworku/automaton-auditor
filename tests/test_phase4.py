@@ -186,6 +186,99 @@ def test_write_report_to_path(tmp_path):
     assert "Remediation Plan" in out.read_text()
 
 
+def test_chief_justice_points_based_rubric():
+    """With rubric_peer_grading.json (levels), report has total_points, max_points, and criteria with points."""
+    peer_rubric = Path(__file__).resolve().parent.parent / "rubric_peer_grading.json"
+    if not peer_rubric.is_file():
+        pytest.skip("rubric_peer_grading.json not found")
+    dimensions = [
+        {
+            "id": "development_progress",
+            "name": "Development Progress",
+            "target_artifact": "github_repo",
+            "levels": [
+                {"id": "complete_system", "name": "Complete System", "points": 35},
+                {"id": "partial_pipeline", "name": "Partial Pipeline", "points": 21},
+                {"id": "superficial", "name": "Superficial", "points": 7},
+                {"id": "absent", "name": "Absent", "points": 0},
+            ],
+        },
+    ]
+    state = {
+        "repo_url": "https://github.com/example/repo",
+        "pdf_path": "",
+        "rubric_path": str(peer_rubric),
+        "rubric_dimensions": dimensions,
+        "evidences": {
+            "development_progress": [
+                Evidence(goal="Progress.", found=True, content="Full pipeline.", location="repo", rationale="OK", confidence=0.9)
+            ]
+        },
+        "opinions": [
+            JudicialOpinion(judge="Prosecutor", criterion_id="development_progress", score=4, argument="Complete.", cited_evidence=[]),
+            JudicialOpinion(judge="Defense", criterion_id="development_progress", score=4, argument="Complete.", cited_evidence=[]),
+            JudicialOpinion(judge="TechLead", criterion_id="development_progress", score=4, argument="Complete.", cited_evidence=[]),
+        ],
+        "final_report": None,
+    }
+    out = chief_justice_node(state)
+    report = out["final_report"]
+    assert report is not None
+    assert report.total_points is not None
+    assert report.max_points is not None
+    assert report.total_points == 35
+    assert report.max_points == 35
+    c = report.criteria[0]
+    assert c.points == 35
+    assert c.selected_level_name == "Complete System"
+    assert c.excluded_from_total is False
+    md = audit_report_to_markdown(report)
+    assert "35" in md
+    assert "points" in md.lower()
+
+
+def test_chief_justice_points_based_excluded_criterion():
+    """When exclude_from_total_if_level is selected, that criterion is excluded from total."""
+    peer_rubric = Path(__file__).resolve().parent.parent / "rubric_peer_grading.json"
+    if not peer_rubric.is_file():
+        pytest.skip("rubric_peer_grading.json not found")
+    dimensions = [
+        {"id": "dev", "name": "Dev", "levels": [{"id": "a", "name": "A", "points": 35}]},
+        {
+            "id": "feedback",
+            "name": "Feedback",
+            "exclude_from_total_if_level": "no_exchange",
+            "levels": [
+                {"id": "integrated", "name": "Integrated", "points": 20},
+                {"id": "no_exchange", "name": "No Exchange", "points": 0},
+            ],
+        },
+    ]
+    state = {
+        "repo_url": "https://github.com/x/r",
+        "pdf_path": "",
+        "rubric_path": str(peer_rubric),
+        "rubric_dimensions": dimensions,
+        "evidences": {"dev": [], "feedback": []},
+        "opinions": [
+            JudicialOpinion(judge="Prosecutor", criterion_id="dev", score=4, argument=".", cited_evidence=[]),
+            JudicialOpinion(judge="Defense", criterion_id="dev", score=4, argument=".", cited_evidence=[]),
+            JudicialOpinion(judge="TechLead", criterion_id="dev", score=4, argument=".", cited_evidence=[]),
+            JudicialOpinion(judge="Prosecutor", criterion_id="feedback", score=1, argument="No exchange.", cited_evidence=[]),
+            JudicialOpinion(judge="Defense", criterion_id="feedback", score=1, argument="No exchange.", cited_evidence=[]),
+            JudicialOpinion(judge="TechLead", criterion_id="feedback", score=1, argument="No exchange.", cited_evidence=[]),
+        ],
+        "final_report": None,
+    }
+    out = chief_justice_node(state)
+    report = out["final_report"]
+    assert report.total_points == 35  # only dev counted
+    assert report.max_points == 35
+    feedback_cr = next(c for c in report.criteria if c.dimension_id == "feedback")
+    assert feedback_cr.excluded_from_total is True
+    assert feedback_cr.points == 0
+
+
 def test_full_run_produces_report_and_file(tmp_path):
     """Run full graph (with mocked Judges) and assert final_report set and file written."""
     from pypdf import PdfWriter
