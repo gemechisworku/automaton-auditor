@@ -79,6 +79,87 @@ def evidence_aggregator_node(state: AgentState) -> dict:
                 )
             ]
 
+    # feedback_implementation (peer rubric): include when peer feedback exists (repo under evaluation or this project)
+    FEEDBACK_REL_PATH = "audit/report_bypeer_received"
+    feedback_impl_dim = next((d for d in dimensions if d.get("id") == "feedback_implementation"), None)
+    if feedback_impl_dim:
+        goal = feedback_impl_dim.get("forensic_instruction", "")
+        content_excerpt = ""
+        found_feedback = False
+        path_used: Path | None = None
+        # 1) Look in repo under evaluation (clone)
+        repo_path = (state.get("repo_path") or "").strip()
+        if repo_path:
+            path = Path(repo_path) / FEEDBACK_REL_PATH
+            if path.is_file():
+                try:
+                    content_excerpt = path.read_text(encoding="utf-8", errors="replace")[:8000]
+                    found_feedback = True
+                    path_used = path
+                except Exception:
+                    pass
+            elif path.is_dir():
+                for f in sorted(path.iterdir()):
+                    if f.is_file() and f.suffix.lower() in (".md", ".txt", ".pdf"):
+                        try:
+                            if f.suffix.lower() == ".pdf":
+                                store = ingest_pdf(str(f))
+                                content_excerpt = " ".join(s.text for s in store.segments)[:8000]
+                            else:
+                                content_excerpt = f.read_text(encoding="utf-8", errors="replace")[:8000]
+                            found_feedback = True
+                            path_used = f
+                            break
+                        except Exception:
+                            continue
+        # 2) Fallback: look in current project (cwd) so grader's local audit/report_bypeer_received is found
+        if not found_feedback:
+            path = Path.cwd() / FEEDBACK_REL_PATH
+            if path.is_file():
+                try:
+                    content_excerpt = path.read_text(encoding="utf-8", errors="replace")[:8000]
+                    found_feedback = True
+                    path_used = path
+                except Exception:
+                    pass
+            elif path.is_dir():
+                for f in sorted(path.iterdir()):
+                    if f.is_file() and f.suffix.lower() in (".md", ".txt", ".pdf"):
+                        try:
+                            if f.suffix.lower() == ".pdf":
+                                store = ingest_pdf(str(f))
+                                content_excerpt = " ".join(s.text for s in store.segments)[:8000]
+                            else:
+                                content_excerpt = f.read_text(encoding="utf-8", errors="replace")[:8000]
+                            found_feedback = True
+                            path_used = f
+                            break
+                        except Exception:
+                            continue
+        if found_feedback and content_excerpt and path_used is not None:
+            evidences["feedback_implementation"] = [
+                Evidence(
+                    goal=goal,
+                    found=True,
+                    content=content_excerpt,
+                    location=str(path.resolve()),
+                    rationale="Peer feedback file(s) found at audit/report_bypeer_received. Evaluate whether the repo shows traceable response to this feedback.",
+                    confidence=0.9,
+                )
+            ]
+        else:
+            evidences["feedback_implementation"] = [
+                Evidence(
+                    goal=goal,
+                    found=False,
+                    location=str(path.resolve()) if repo_path else FEEDBACK_REL_PATH,
+                    rationale="No feedback file or directory found at audit/report_bypeer_received in the repo under evaluation. Score as No Exchange and exclude from total."
+                    if repo_path
+                    else "No repo_path in state; cannot read audit/report_bypeer_received from repo. Score as No Exchange.",
+                    confidence=0.95,
+                )
+            ]
+
     for dim in dimensions:
         dim_id = dim.get("id", "unknown")
         if dim_id not in evidences or not evidences[dim_id]:
@@ -100,15 +181,24 @@ def judge_collector_node(state: AgentState) -> dict:
     return {}
 
 
-def _load_synthesis_rules(state: AgentState) -> dict[str, str]:
-    """Load synthesis_rules from rubric JSON."""
+def _load_rubric_data(state: AgentState) -> dict:
+    """Load full rubric JSON from state rubric_path. Returns {} if missing."""
     rubric_path = state.get("rubric_path") or "rubric.json"
     path = Path(rubric_path)
     if not path.is_file():
         return {}
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    return data.get("synthesis_rules", {})
+        return json.load(f)
+
+
+def _load_synthesis_rules(state: AgentState) -> dict[str, str]:
+    """Load synthesis_rules from rubric JSON."""
+    return _load_rubric_data(state).get("synthesis_rules", {})
+
+
+def _is_points_based_rubric(dimensions: list[dict]) -> bool:
+    """True if any dimension has 'levels' (point-based scoring)."""
+    return any(d.get("levels") for d in dimensions)
 
 
 def _opinions_by_criterion(opinions: list[JudicialOpinion]) -> dict[str, list[JudicialOpinion]]:
@@ -200,10 +290,20 @@ def _remediation_from_opinions(opinions: list[JudicialOpinion]) -> str:
     return " ".join(parts) if parts else "No specific remediation provided."
 
 
+def _score_to_level_index(score: int, num_levels: int) -> int:
+    """Map judge score (1-5) to level index (0 = top). For 4 levels: 5->0, 4->1, 3->2, 1-2->3."""
+    if num_levels <= 0:
+        return 0
+    # 5=highest -> 0, 4->1, 3->2, 2->3, 1->3
+    level_index = max(0, min(num_levels - 1, 4 - score))
+    return level_index
+
+
 def chief_justice_node(state: AgentState) -> dict[str, Any]:
     """
     Read opinions (group by criterion_id) and evidences; load synthesis_rules; apply hardcoded
     rules; build AuditReport. Return {"final_report": report}. No LLM.
+    Supports points-based rubric when dimensions have "levels".
     """
     opinions_raw = state.get("opinions") or []
     opinions = [o if isinstance(o, JudicialOpinion) else JudicialOpinion(**o) for o in opinions_raw]
@@ -211,6 +311,8 @@ def chief_justice_node(state: AgentState) -> dict[str, Any]:
     dimensions = state.get("rubric_dimensions") or []
     synthesis_rules = _load_synthesis_rules(state)
     repo_url = state.get("repo_url") or ""
+    rubric_full = _load_rubric_data(state)
+    points_based = _is_points_based_rubric(dimensions)
 
     by_criterion = _opinions_by_criterion(opinions)
     criteria_results: list[CriterionResult] = []
@@ -230,6 +332,21 @@ def chief_justice_node(state: AgentState) -> dict[str, Any]:
             dim_opinions, dim_name, evidence_objs, synthesis_rules
         )
         remediation = _remediation_from_opinions(dim_opinions)
+
+        points: int | None = None
+        excluded_from_total = False
+        selected_level_name: str | None = None
+        levels = dim.get("levels") or []
+        exclude_if_level = dim.get("exclude_from_total_if_level")
+
+        if points_based and levels:
+            level_index = _score_to_level_index(final_score, len(levels))
+            level = levels[level_index]
+            points = int(level.get("points", 0))
+            selected_level_name = level.get("name") or level.get("id", "")
+            if exclude_if_level and level.get("id") == exclude_if_level:
+                excluded_from_total = True
+
         criteria_results.append(
             CriterionResult(
                 dimension_id=dim_id,
@@ -238,39 +355,78 @@ def chief_justice_node(state: AgentState) -> dict[str, Any]:
                 judge_opinions=dim_opinions,
                 dissent_summary=dissent_summary,
                 remediation=remediation,
+                points=points,
+                excluded_from_total=excluded_from_total,
+                selected_level_name=selected_level_name,
             )
         )
 
-    overall = (
-        sum(c.final_score for c in criteria_results) / len(criteria_results)
-        if criteria_results
-        else 0.0
-    )
-    executive_summary = (
-        f"Audit of {repo_url}: {len(criteria_results)} criteria evaluated. "
-        f"Overall score: {overall:.1f}/5. "
-        + (
-            f"Dissent recorded for {sum(1 for c in criteria_results if c.dissent_summary)} criterion/criteria."
-            if any(c.dissent_summary for c in criteria_results)
-            else ""
+    if points_based:
+        included = [c for c in criteria_results if not c.excluded_from_total]
+        total_pts = sum(c.points or 0 for c in included)
+        # Achievable max = sum of max points per dimension for non-excluded dimensions
+        max_pts = 0
+        for c in criteria_results:
+            if c.excluded_from_total:
+                continue
+            dim = next((d for d in dimensions if d.get("id") == c.dimension_id), None)
+            if dim:
+                levs = dim.get("levels") or []
+                if levs:
+                    max_pts += max(l.get("points", 0) for l in levs)
+        if max_pts == 0:
+            max_pts = rubric_full.get("rubric_metadata", {}).get("total_points_possible") or 100
+        overall = float(total_pts) if (max_pts and max_pts > 0) else 0.0
+        executive_summary = (
+            f"Audit of {repo_url}: {len(criteria_results)} criteria evaluated (points-based). "
+            f"Total: {total_pts} / {max_pts or '?'} points. "
+            + (
+                f"Dissent recorded for {sum(1 for c in criteria_results if c.dissent_summary)} criterion/criteria."
+                if any(c.dissent_summary for c in criteria_results)
+                else ""
+            )
         )
-    )
-    remediation_plan = "\n\n".join(
-        f"**{c.dimension_name}**: {c.remediation}" for c in criteria_results
-    ) or "No remediation plan."
-
-    report = AuditReport(
-        repo_url=repo_url,
-        executive_summary=executive_summary.strip(),
-        overall_score=round(overall, 1),
-        criteria=criteria_results,
-        remediation_plan=remediation_plan,
-    )
+        report = AuditReport(
+            repo_url=repo_url,
+            executive_summary=executive_summary.strip(),
+            overall_score=round(overall, 1),
+            criteria=criteria_results,
+            remediation_plan="\n\n".join(
+                f"**{c.dimension_name}**: {c.remediation}" for c in criteria_results
+            ) or "No remediation plan.",
+            total_points=float(total_pts),
+            max_points=float(max_pts) if max_pts is not None else None,
+        )
+    else:
+        overall = (
+            sum(c.final_score for c in criteria_results) / len(criteria_results)
+            if criteria_results
+            else 0.0
+        )
+        executive_summary = (
+            f"Audit of {repo_url}: {len(criteria_results)} criteria evaluated. "
+            f"Overall score: {overall:.1f}/5. "
+            + (
+                f"Dissent recorded for {sum(1 for c in criteria_results if c.dissent_summary)} criterion/criteria."
+                if any(c.dissent_summary for c in criteria_results)
+                else ""
+            )
+        )
+        remediation_plan = "\n\n".join(
+            f"**{c.dimension_name}**: {c.remediation}" for c in criteria_results
+        ) or "No remediation plan."
+        report = AuditReport(
+            repo_url=repo_url,
+            executive_summary=executive_summary.strip(),
+            overall_score=round(overall, 1),
+            criteria=criteria_results,
+            remediation_plan=remediation_plan,
+        )
     return {"final_report": report}
 
 
 def audit_report_to_markdown(report: AuditReport) -> str:
-    """Serialize AuditReport to Markdown per API Contracts §8."""
+    """Serialize AuditReport to Markdown per API Contracts §8. Supports points-based criteria."""
     lines = [
         "# Audit Report",
         "",
@@ -278,17 +434,22 @@ def audit_report_to_markdown(report: AuditReport) -> str:
         "",
         report.executive_summary,
         "",
-        f"**Overall Score:** {report.overall_score}/5",
-        "",
-        "---",
-        "",
-        "## Criterion Breakdown",
-        "",
     ]
+    if report.total_points is not None and report.max_points is not None:
+        lines.append(f"**Total:** {int(report.total_points)} / {int(report.max_points)} points")
+    else:
+        lines.append(f"**Overall Score:** {report.overall_score}/5")
+    lines.extend(["", "---", "", "## Criterion Breakdown", ""])
+
     for c in report.criteria:
         lines.append(f"### {c.dimension_name}")
         lines.append("")
-        lines.append(f"- **Final Score:** {c.final_score}/5")
+        if c.points is not None and c.selected_level_name:
+            lines.append(f"- **Level:** {c.selected_level_name} — **Points:** {c.points}")
+            if c.excluded_from_total:
+                lines.append("- **Excluded from total.**")
+        else:
+            lines.append(f"- **Final Score:** {c.final_score}/5")
         lines.append("")
         lines.append("**Judge opinions:**")
         for o in c.judge_opinions:

@@ -70,11 +70,21 @@ def _invoke_judge_for_dimension(
     failure = dimension.get("failure_pattern", "")
 
     evidence_text = _evidence_summary(evidence_list)
+    levels = dimension.get("levels") or []
+    level_instruction = ""
+    if levels:
+        level_instruction = "\nThis criterion uses point-based levels. Choose the level that best fits the evidence:\n"
+        for i, lev in enumerate(levels):
+            # Score 4 = top, 3 = second, 2 = third, 1 = lowest (for 4 levels)
+            score_val = len(levels) - i if i < len(levels) else 1
+            level_instruction += f"- Score {score_val}: {lev.get('name', lev.get('id', ''))} ({lev.get('points', 0)} pts) — {lev.get('description', '')[:200]}\n"
+        level_instruction += "Provide your opinion: score (1-4 for 4 levels, where 4=best), argument, and cited_evidence.\n\n"
+
     user_content = f"""Criterion: {dim_id} ({dim_name})
 Forensic instruction: {forensic}
 Success pattern: {success}
 Failure pattern: {failure}
-
+{level_instruction}
 Evidence collected:
 {evidence_text}
 

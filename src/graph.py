@@ -23,13 +23,27 @@ from src.nodes.justice import (
 
 
 def load_rubric_dimensions(rubric_path: str | None = None) -> list[dict]:
-    """Load dimensions list from rubric.json."""
+    """Load dimensions list from rubric JSON. Dimensions may include optional 'levels' (points-based rubric)."""
     path = Path(rubric_path or "rubric.json")
     if not path.is_file():
         return []
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     return data.get("dimensions", [])
+
+
+def load_rubric_full(rubric_path: str | None = None) -> dict:
+    """Load full rubric JSON (metadata, dimensions, synthesis_rules). Returns {} if file missing."""
+    path = Path(rubric_path or "rubric.json")
+    if not path.is_file():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def is_points_based_rubric(dimensions: list[dict]) -> bool:
+    """True if any dimension has 'levels' (point-based scoring)."""
+    return any(d.get("levels") for d in dimensions)
 
 
 def build_detective_graph() -> StateGraph:
