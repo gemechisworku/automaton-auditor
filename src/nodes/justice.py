@@ -142,7 +142,7 @@ def evidence_aggregator_node(state: AgentState) -> dict:
                     goal=goal,
                     found=True,
                     content=content_excerpt,
-                    location=str(path.resolve()),
+                    location=str(path_used.resolve()),
                     rationale="Peer feedback file(s) found at audit/report_bypeer_received. Evaluate whether the repo shows traceable response to this feedback.",
                     confidence=0.9,
                 )
@@ -152,10 +152,8 @@ def evidence_aggregator_node(state: AgentState) -> dict:
                 Evidence(
                     goal=goal,
                     found=False,
-                    location=str(path.resolve()) if repo_path else FEEDBACK_REL_PATH,
-                    rationale="No feedback file or directory found at audit/report_bypeer_received in the repo under evaluation. Score as No Exchange and exclude from total."
-                    if repo_path
-                    else "No repo_path in state; cannot read audit/report_bypeer_received from repo. Score as No Exchange.",
+                    location=FEEDBACK_REL_PATH,
+                    rationale="No feedback file or directory found at audit/report_bypeer_received (checked repo under evaluation and current project). Score as No Exchange and exclude from total.",
                     confidence=0.95,
                 )
             ]
