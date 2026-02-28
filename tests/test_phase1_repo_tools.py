@@ -11,6 +11,7 @@ import pytest
 from src.tools.repo_tools import (
     RepoCloneError,
     analyze_graph_structure,
+    analyze_state_schema,
     clone_repo,
     extract_git_history,
     list_repo_files,
@@ -99,3 +100,30 @@ def test_analyze_graph_structure_no_graph_safe():
     assert result["file_found"] is False
     assert result["nodes"] == []
     assert "error" in result
+
+
+def test_analyze_state_schema():
+    """AST-based state.py analysis returns models_found, reducer_keys, has_evidence, has_judicial_opinion."""
+    repo_root = Path(__file__).resolve().parent.parent
+    result = analyze_state_schema(str(repo_root))
+    assert "file_found" in result
+    assert "models_found" in result
+    assert "reducer_keys" in result
+    assert "has_evidence" in result
+    assert "has_judicial_opinion" in result
+    assert "has_agent_state" in result
+    if result["file_found"]:
+        assert result["has_evidence"] is True
+        assert result["has_judicial_opinion"] is True
+        assert "Evidence" in result["models_found"]
+        assert "JudicialOpinion" in result["models_found"]
+        assert len(result["reducer_keys"]) >= 1
+
+
+def test_analyze_state_schema_no_state_file():
+    """When src/state.py is missing, returns file_found False."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        result = analyze_state_schema(tmp)
+    assert result["file_found"] is False
+    assert result.get("has_evidence") is False

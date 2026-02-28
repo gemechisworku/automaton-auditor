@@ -158,6 +158,43 @@ def evidence_aggregator_node(state: AgentState) -> dict:
                 )
             ]
 
+    # Cross-link evidence across RepoInvestigator, DocAnalyst, VisionInspector for holistic conclusions
+    # Each of these dimensions gets one extra Evidence summarizing related findings from other artifacts
+    _CROSS_LINK_MAP = {
+        "graph_orchestration": ("theoretical_depth", "swarm_visual"),   # repo + doc + vision
+        "theoretical_depth": ("graph_orchestration", "swarm_visual"),   # doc + repo + vision
+        "swarm_visual": ("graph_orchestration", "theoretical_depth"),   # vision + repo + doc
+    }
+    for dim_id, related_ids in _CROSS_LINK_MAP.items():
+        dim = next((d for d in dimensions if d.get("id") == dim_id), None)
+        if not dim:
+            continue
+        goal = dim.get("forensic_instruction", "")
+        parts = []
+        for rid in related_ids:
+            rel_list = evidences.get(rid) or []
+            for e in rel_list[:2]:
+                ev = e if isinstance(e, Evidence) else Evidence(**e)
+                parts.append(f"[{rid}] {ev.rationale[:180]}{'...' if len(ev.rationale or '') > 180 else ''}")
+        if not parts:
+            continue
+        cross_rationale = "Related findings from other detectives: " + " | ".join(parts)
+        existing = evidences.get(dim_id) or []
+        existing_objs = [e if isinstance(e, Evidence) else Evidence(**e) for e in existing]
+        max_conf = max((e.confidence for e in existing_objs), default=0.0)
+        # Use max of existing confidence (capped at 0.7) so we don't flip is_critical_failure when all evidence failed
+        cross_confidence = min(0.7, max_conf) if existing_objs else 0.0
+        evidences[dim_id] = existing + [
+            Evidence(
+                goal=goal,
+                found=any(e.found for e in existing_objs),
+                content=cross_rationale[:2000],
+                location="aggregated",
+                rationale="Cross-link: RepoInvestigator, DocAnalyst, VisionInspector outputs combined for holistic forensic conclusion.",
+                confidence=cross_confidence,
+            )
+        ]
+
     for dim in dimensions:
         dim_id = dim.get("id", "unknown")
         if dim_id not in evidences or not evidences[dim_id]:

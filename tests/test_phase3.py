@@ -91,7 +91,7 @@ def test_prosecutor_node_returns_opinions_with_mocked_llm(mock_state_with_eviden
 
 
 def test_parse_failure_does_not_append_invalid_opinion(mock_state_with_evidence):
-    """When LLM raises, no invalid object is appended; retries then skip."""
+    """When LLM raises after retries, a valid fallback JudicialOpinion is appended (no invalid data)."""
     with patch("src.nodes.judges._get_llm") as mock_get_llm:
         mock_llm = mock_get_llm.return_value
         mock_llm.invoke.side_effect = ValueError("Parse error")
@@ -99,7 +99,13 @@ def test_parse_failure_does_not_append_invalid_opinion(mock_state_with_evidence)
         out = prosecutor_node(mock_state_with_evidence)
 
     assert "opinions" in out
-    assert out["opinions"] == []
+    # One fallback opinion per dimension (valid JudicialOpinion, score=3)
+    assert len(out["opinions"]) == len(mock_state_with_evidence.get("rubric_dimensions") or [])
+    for o in out["opinions"]:
+        assert o.judge == "Prosecutor"
+        assert 1 <= o.score <= 5
+        assert "parse failure" in o.argument.lower() or "retries" in o.argument.lower()
+        assert o.cited_evidence == []
 
 
 def test_full_judicial_graph_opinions_populated_with_mocked_llm(tmp_path, mock_state_with_evidence):

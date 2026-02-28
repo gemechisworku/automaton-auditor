@@ -147,7 +147,8 @@ def analyze_graph_structure(repo_path: str) -> dict:
     Use Python AST to detect StateGraph, add_edge, add_node, parallelism, reducers
     in src/graph.py (or graph.py). Does not rely on regex for structure (SRS FR-7).
 
-    Returns dict with keys: nodes, edges, has_parallelism, reducers_used, file_found, error.
+    Returns dict with keys: nodes, edges, has_parallelism, reducers_used, file_found, error,
+    wiring_summary, parallel_sources, fan_in_targets (AST-based structural analysis for Evidence).
     """
     path = Path(repo_path)
     candidates = [
@@ -167,6 +168,9 @@ def analyze_graph_structure(repo_path: str) -> dict:
             "has_parallelism": False,
             "reducers_used": False,
             "error": "no graph file found",
+            "wiring_summary": "",
+            "parallel_sources": [],
+            "fan_in_targets": [],
         }
 
     try:
@@ -179,6 +183,9 @@ def analyze_graph_structure(repo_path: str) -> dict:
             "has_parallelism": False,
             "reducers_used": False,
             "error": str(e),
+            "wiring_summary": "",
+            "parallel_sources": [],
+            "fan_in_targets": [],
         }
 
     try:
@@ -191,6 +198,9 @@ def analyze_graph_structure(repo_path: str) -> dict:
             "has_parallelism": False,
             "reducers_used": False,
             "error": f"syntax error: {e}",
+            "wiring_summary": "",
+            "parallel_sources": [],
+            "fan_in_targets": [],
         }
 
     nodes: list[str] = []
@@ -221,9 +231,6 @@ def analyze_graph_structure(repo_path: str) -> dict:
             for t in node.targets:
                 if isinstance(t, ast.Name) and t.id == "reducer":
                     reducers_seen = True
-                # Annotated with operator.ior or operator.add
-                if isinstance(t, ast.Tuple):
-                    pass  # could scan for reducer usage in state def
         if isinstance(node, ast.FunctionDef):
             for stmt in ast.walk(node):
                 if isinstance(stmt, ast.Call):
@@ -231,12 +238,27 @@ def analyze_graph_structure(repo_path: str) -> dict:
                     if n in ("operator.ior", "operator.add", "ior", "add"):
                         reducers_seen = True
 
-    # Dedupe nodes from add_node calls
     nodes = list(dict.fromkeys(add_node_calls))
     edges = list(dict.fromkeys(add_edge_calls))
-    # Parallelism: multiple edges from same source, or conditional edges
     sources = [e[0] for e in edges]
+    targets = [e[1] for e in edges]
     has_parallelism = has_add_conditional_edges or any(sources.count(s) > 1 for s in set(sources))
+
+    # Parallelism pattern: nodes that fan out (multiple outgoing edges)
+    parallel_sources = [s for s in set(sources) if sources.count(s) > 1]
+    # Fan-in: nodes that receive from multiple predecessors
+    fan_in_targets = [t for t in set(targets) if targets.count(t) > 1]
+    # Human-readable wiring summary for Evidence content/rationale
+    wiring_summary = _build_wiring_summary(
+        has_state_graph=has_state_graph,
+        nodes=nodes,
+        edges=edges,
+        has_parallelism=has_parallelism,
+        reducers_used=reducers_seen or _has_reducer_in_source(source),
+        parallel_sources=parallel_sources,
+        fan_in_targets=fan_in_targets,
+        has_conditional=has_add_conditional_edges,
+    )
 
     return {
         "file_found": True,
@@ -244,6 +266,125 @@ def analyze_graph_structure(repo_path: str) -> dict:
         "edges": edges,
         "has_parallelism": has_parallelism,
         "reducers_used": reducers_seen or _has_reducer_in_source(source),
+        "error": None,
+        "wiring_summary": wiring_summary,
+        "parallel_sources": parallel_sources,
+        "fan_in_targets": fan_in_targets,
+    }
+
+
+def _build_wiring_summary(
+    *,
+    has_state_graph: bool,
+    nodes: list[str],
+    edges: list[tuple[str, str]],
+    has_parallelism: bool,
+    reducers_used: bool,
+    parallel_sources: list[str],
+    fan_in_targets: list[str],
+    has_conditional: bool,
+) -> str:
+    """Build a criterion-aware, debuggable summary of graph wiring from AST."""
+    parts = []
+    parts.append(f"StateGraph present: {has_state_graph}. Nodes ({len(nodes)}): {nodes}.")
+    parts.append(f"Edges: {edges}.")
+    parts.append(f"Parallelism (fan-out): {has_parallelism}; sources with multiple edges: {parallel_sources}.")
+    parts.append(f"Fan-in targets (multiple incoming edges): {fan_in_targets}.")
+    parts.append(f"Conditional edges: {has_conditional}. Reducers used in state: {reducers_used}.")
+    return " ".join(parts)
+
+
+def analyze_state_schema(repo_path: str) -> dict:
+    """
+    AST-based analysis of src/state.py: Pydantic models (Evidence, JudicialOpinion, etc.)
+    and TypedDict/Annotated reducer usage. Integrates with Evidence for state_management_rigor.
+
+    Returns dict with keys: file_found, models_found, reducer_keys, has_evidence, has_judicial_opinion,
+    has_agent_state, error.
+    """
+    path = Path(repo_path)
+    state_file = path / "src" / "state.py"
+    if not state_file.is_file():
+        return {
+            "file_found": False,
+            "models_found": [],
+            "reducer_keys": [],
+            "has_evidence": False,
+            "has_judicial_opinion": False,
+            "has_agent_state": False,
+            "error": "src/state.py not found",
+        }
+    try:
+        source = state_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return {
+            "file_found": True,
+            "models_found": [],
+            "reducer_keys": [],
+            "has_evidence": False,
+            "has_judicial_opinion": False,
+            "has_agent_state": False,
+            "error": str(e),
+        }
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        return {
+            "file_found": True,
+            "models_found": [],
+            "reducer_keys": [],
+            "has_evidence": False,
+            "has_judicial_opinion": False,
+            "has_agent_state": False,
+            "error": f"syntax error: {e}",
+        }
+
+    models_found: list[str] = []
+    reducer_keys: list[str] = []
+    has_evidence = False
+    has_judicial_opinion = False
+    has_agent_state = False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            name = node.name
+            if name:
+                models_found.append(name)
+            if name == "Evidence":
+                has_evidence = True
+            if name == "JudicialOpinion":
+                has_judicial_opinion = True
+            if name == "AgentState":
+                has_agent_state = True
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            # Annotated[..., reducer] pattern: target id is the state key
+            key_name = node.target.id
+            if isinstance(node.annotation, ast.Subscript):
+                ann = node.annotation
+                if isinstance(ann.slice, ast.Tuple) or hasattr(ann.slice, "elts"):
+                    # Annotated[dict[str, list[Evidence]], merge_evidences] -> key_name
+                    reducer_keys.append(key_name)
+            # Also check for simple Name annotation that might be Annotated alias
+            for child in ast.walk(node):
+                if isinstance(child, ast.Call):
+                    n = _call_name(child.func)
+                    if n and ("merge" in n.lower() or "ior" in str(n) or "add" in str(n)):
+                        if key_name not in reducer_keys:
+                            reducer_keys.append(key_name)
+
+    if not reducer_keys and ("merge_evidences" in source or "merge_opinions" in source):
+        if "evidences" in source:
+            reducer_keys.append("evidences")
+        if "opinions" in source:
+            reducer_keys.append("opinions")
+
+    return {
+        "file_found": True,
+        "models_found": models_found,
+        "reducer_keys": list(dict.fromkeys(reducer_keys)),
+        "has_evidence": has_evidence,
+        "has_judicial_opinion": has_judicial_opinion,
+        "has_agent_state": has_agent_state,
         "error": None,
     }
 

@@ -1,14 +1,20 @@
 """
 Judicial layer: Prosecutor, Defense, Tech Lead. Each returns {"opinions": [JudicialOpinion, ...]}.
 Uses .with_structured_output(JudicialOpinion); distinct prompts per persona. API Contracts §4, §7.
+Retry/error-handling for malformed LLM output; criterion-aware prompts with rubric metadata.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Literal
 
+from pydantic import ValidationError
+
 from src.state import AgentState, Evidence, JudicialOpinion
+
+logger = logging.getLogger(__name__)
 
 _JUDGE = Literal["Prosecutor", "Defense", "TechLead"]
 
@@ -56,18 +62,45 @@ def _evidence_summary(evidences: list[Evidence]) -> str:
     return "\n".join(parts) if parts else "(no evidence)"
 
 
+def _synthesis_hint_for_dimension(dimension: dict[str, Any], synthesis_rules: dict[str, str]) -> str:
+    """Return a one-line hint for the judge so evaluations are criterion-aware and debuggable."""
+    dim_id = dimension.get("id", "")
+    dim_name = (dimension.get("name") or "").lower()
+    if not synthesis_rules:
+        return ""
+    hints = []
+    if "architecture" in dim_name or "graph" in dim_name or "orchestration" in dim_id:
+        h = synthesis_rules.get("functionality_weight", "")
+        if h:
+            hints.append(f"Tech Lead weight: {h[:150]}.")
+    if "security" in dim_id or "safe" in dim_id:
+        h = synthesis_rules.get("security_override", "")
+        if h:
+            hints.append(f"Security rule: {h[:120]}.")
+    if hints:
+        return " Synthesis (for your awareness): " + " ".join(hints)
+    return ""
+
+
 def _invoke_judge_for_dimension(
     dimension: dict[str, Any],
     evidence_list: list[Evidence],
     judge_name: _JUDGE,
     system_prompt: str,
-) -> JudicialOpinion | None:
-    """Call LLM once for one dimension; return JudicialOpinion or None on failure (after retries)."""
+    synthesis_rules: dict[str, str] | None = None,
+) -> JudicialOpinion:
+    """
+    Call LLM for one dimension with retry/error-handling. Returns JudicialOpinion; on parse
+    failure after retries returns a fallback opinion so the dimension remains criterion-aware.
+    """
     dim_id = dimension.get("id", "unknown")
     dim_name = dimension.get("name", dim_id)
     forensic = dimension.get("forensic_instruction", "")
     success = dimension.get("success_pattern", "")
     failure = dimension.get("failure_pattern", "")
+    judicial_logic = dimension.get("judicial_logic", "")
+    synthesis_rules = synthesis_rules or {}
+    synthesis_hint = _synthesis_hint_for_dimension(dimension, synthesis_rules)
 
     evidence_text = _evidence_summary(evidence_list)
     levels = dimension.get("levels") or []
@@ -75,32 +108,34 @@ def _invoke_judge_for_dimension(
     if levels:
         level_instruction = "\nThis criterion uses point-based levels. Choose the level that best fits the evidence:\n"
         for i, lev in enumerate(levels):
-            # Score 4 = top, 3 = second, 2 = third, 1 = lowest (for 4 levels)
             score_val = len(levels) - i if i < len(levels) else 1
             level_instruction += f"- Score {score_val}: {lev.get('name', lev.get('id', ''))} ({lev.get('points', 0)} pts) — {lev.get('description', '')[:200]}\n"
         level_instruction += "Provide your opinion: score (1-4 for 4 levels, where 4=best), argument, and cited_evidence.\n\n"
 
-    user_content = f"""Criterion: {dim_id} ({dim_name})
+    user_content = f"""Criterion being evaluated — id: {dim_id}, name: {dim_name}
 Forensic instruction: {forensic}
 Success pattern: {success}
 Failure pattern: {failure}
+{f'Judicial logic for this criterion: {judicial_logic}' if judicial_logic else ''}{synthesis_hint}
+
 {level_instruction}
 Evidence collected:
 {evidence_text}
 
-Provide your opinion: score (1-5), argument, and cited_evidence (reference the evidence items above)."""
+Provide your opinion for this criterion only: score (1-5), argument, and cited_evidence (reference the evidence items above)."""
 
     from langchain_core.messages import HumanMessage, SystemMessage
 
     llm = _get_llm()
     messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_content)]
     max_attempts = 3
+    last_error: Exception | None = None
     for attempt in range(max_attempts):
         try:
             opinion = llm.invoke(messages)
             if not isinstance(opinion, JudicialOpinion):
+                last_error = ValueError("LLM did not return JudicialOpinion")
                 continue
-            # Ensure judge field matches persona (LLM might return wrong one)
             return JudicialOpinion(
                 judge=judge_name,
                 criterion_id=dim_id,
@@ -108,17 +143,42 @@ Provide your opinion: score (1-5), argument, and cited_evidence (reference the e
                 argument=opinion.argument or "",
                 cited_evidence=opinion.cited_evidence if isinstance(opinion.cited_evidence, list) else [],
             )
-        except Exception:
-            if attempt == max_attempts - 1:
-                return None
-            continue
-    return None
+        except ValidationError as e:
+            last_error = e
+            logger.warning("Judge %s criterion %s attempt %s: ValidationError %s", judge_name, dim_id, attempt + 1, e)
+        except Exception as e:
+            last_error = e
+            logger.warning("Judge %s criterion %s attempt %s: %s", judge_name, dim_id, attempt + 1, e)
+    # Fallback: valid JudicialOpinion so dimension is not dropped; Chief Justice can still synthesize
+    return JudicialOpinion(
+        judge=judge_name,
+        criterion_id=dim_id,
+        score=3,
+        argument=f"Structured output parse failure after {max_attempts} retries; neutral score. Last error: {last_error!s}"[:500],
+        cited_evidence=[],
+    )
+
+
+def _load_synthesis_rules(state: AgentState) -> dict[str, str]:
+    """Load synthesis_rules from rubric JSON for criterion-aware judge prompts."""
+    import json
+    from pathlib import Path
+    rubric_path = state.get("rubric_path") or "rubric.json"
+    path = Path(rubric_path)
+    if not path.is_file():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f).get("synthesis_rules", {})
+    except Exception:
+        return {}
 
 
 def _run_judge_node(state: AgentState, judge_name: _JUDGE, system_prompt: str) -> dict[str, Any]:
-    """Common logic: iterate dimensions, get evidence, call LLM, collect opinions."""
+    """Common logic: iterate dimensions, get evidence, call LLM with criterion metadata, collect opinions."""
     dimensions = state.get("rubric_dimensions") or []
     evidences_map = state.get("evidences") or {}
+    synthesis_rules = _load_synthesis_rules(state)
     opinions: list[JudicialOpinion] = []
 
     for dim in dimensions:
@@ -126,17 +186,16 @@ def _run_judge_node(state: AgentState, judge_name: _JUDGE, system_prompt: str) -
         evidence_list = evidences_map.get(dim_id, [])
         if not isinstance(evidence_list, list):
             evidence_list = []
-        # Ensure Evidence instances (state may have dicts after serialization)
         evidence_objs = [
             e if isinstance(e, Evidence) else Evidence(**e)
             for e in evidence_list
             if isinstance(e, (Evidence, dict))
         ]
 
-        opinion = _invoke_judge_for_dimension(dim, evidence_objs, judge_name, system_prompt)
-        if opinion is not None:
-            opinions.append(opinion)
-        # On parse failure we skip this dimension (no invalid append)
+        opinion = _invoke_judge_for_dimension(
+            dim, evidence_objs, judge_name, system_prompt, synthesis_rules
+        )
+        opinions.append(opinion)
 
     return {"opinions": opinions}
 

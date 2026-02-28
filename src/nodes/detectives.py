@@ -20,6 +20,7 @@ from src.tools.doc_tools import (
 from src.tools.repo_tools import (
     RepoCloneError,
     analyze_graph_structure,
+    analyze_state_schema,
     clone_repo,
     extract_git_history,
     list_repo_files,
@@ -58,6 +59,7 @@ def repo_investigator_node(state: AgentState) -> dict[str, Any]:
         repo_path = None
     git_history: list[dict] = []
     graph_struct: dict[str, Any] = {}
+    state_schema: dict[str, Any] = {}
     repo_file_list: list[str] = []
 
     if repo_url:
@@ -66,6 +68,7 @@ def repo_investigator_node(state: AgentState) -> dict[str, Any]:
                 repo_path = clone_repo(repo_url)
             git_history = extract_git_history(repo_path) if repo_path else []
             graph_struct = analyze_graph_structure(repo_path) if repo_path else {}
+            state_schema = analyze_state_schema(repo_path) if repo_path else {}
             repo_file_list = list_repo_files(repo_path) if repo_path else []
         except RepoCloneError as e:
             for d in dimensions:
@@ -122,7 +125,8 @@ def repo_investigator_node(state: AgentState) -> dict[str, Any]:
             found = graph_struct.get("file_found", False)
             has_parallel = graph_struct.get("has_parallelism", False)
             reducers = graph_struct.get("reducers_used", False)
-            content = f"nodes={graph_struct.get('nodes', [])}, edges={graph_struct.get('edges', [])}, has_parallelism={has_parallel}, reducers_used={reducers}"
+            wiring = graph_struct.get("wiring_summary") or ""
+            content = f"AST-based: nodes={graph_struct.get('nodes', [])}, edges={graph_struct.get('edges', [])}, has_parallelism={has_parallel}, reducers_used={reducers}. Wiring: {wiring}"
             dim_evidences.append(
                 Evidence(
                     goal=goal,
@@ -133,6 +137,24 @@ def repo_investigator_node(state: AgentState) -> dict[str, Any]:
                     confidence=0.85 if found else 0.2,
                 )
             )
+        # State schema (state_management_rigor): AST of src/state.py for Pydantic and reducers
+        if "state" in goal.lower() or "reducer" in goal.lower() or dim_id == "state_management_rigor":
+            if state_schema.get("file_found"):
+                has_evidence = state_schema.get("has_evidence", False)
+                has_opinion = state_schema.get("has_judicial_opinion", False)
+                has_agent = state_schema.get("has_agent_state", False)
+                reducer_keys = state_schema.get("reducer_keys", [])
+                content_schema = f"AST state.py: models={state_schema.get('models_found', [])}, Evidence={has_evidence}, JudicialOpinion={has_opinion}, AgentState={has_agent}, reducer_keys={reducer_keys}"
+                dim_evidences.append(
+                    Evidence(
+                        goal=goal,
+                        found=has_evidence and has_opinion and has_agent and len(reducer_keys) >= 2,
+                        content=content_schema,
+                        location=f"{repo_path}/src/state.py",
+                        rationale=success if (has_evidence and has_opinion and reducer_keys) else (state_schema.get("error") or failure),
+                        confidence=0.85 if has_evidence and has_opinion else 0.3,
+                    )
+                )
 
         # development_progress (peer rubric): pipeline completeness, git narrative, required files
         if dim_id == "development_progress" and repo_path:
