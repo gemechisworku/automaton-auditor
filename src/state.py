@@ -45,6 +45,10 @@ class CriterionResult(BaseModel):
     judge_opinions: list[JudicialOpinion]
     dissent_summary: str | None = None
     remediation: str
+    # Points-based rubric (optional)
+    points: int | None = None
+    excluded_from_total: bool = False
+    selected_level_name: str | None = None
 
 
 class AuditReport(BaseModel):
@@ -55,6 +59,9 @@ class AuditReport(BaseModel):
     overall_score: float
     criteria: list[CriterionResult]
     remediation_plan: str
+    # Points-based rubric (optional)
+    total_points: float | None = None
+    max_points: float | None = None
 
 
 # ----- Explicit reducers for parallel-written state (API Contracts §3.5) -----

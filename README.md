@@ -50,6 +50,7 @@ uv run python -m src.run https://github.com/octocat/Hello-World report.pdf --out
 
 - **Where the report is written:** To the path given by `--output`, or by default **`audit/report_<repo_slug>.md`** (e.g. `audit/report_Hello-World.md`). The file is Markdown: Executive Summary, Criterion Breakdown, Remediation Plan.
 - **Errors:** Missing `OPENAI_API_KEY`, empty `repo_url`, or invalid rubric produce a clear error message and exit code 1.
+- **Rubrics:** Default is `rubric.json` (1–5 scale). For points-based peer grading use **`--rubric rubric_peer_grading.json`**; report will show Total X / Y points and per-criterion levels/points (see `docs/implementation_plan_peer_rubric.md`). For **Feedback Implementation** to be included (not "No Exchange"), peer feedback must exist at **`audit/report_bypeer_received`** (a file or directory with `.md`/`.txt`/`.pdf`). The auditor looks in (1) the repo under evaluation (clone), then (2) the current project (cwd), so you can place the feedback in your project and it will be found when you run the audit.
 
 ## Observability (LangSmith)
 

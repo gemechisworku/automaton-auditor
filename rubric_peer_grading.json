@@ -1,0 +1,78 @@
+{
+  "rubric_metadata": {
+    "rubric_name": "Peer Grading — Week 2 MinMax",
+    "grading_target": "Peer repository, feedback/communication (where available), and agent output quality",
+    "version": "1.0",
+    "scoring_model": "points",
+    "total_points_possible": 100,
+    "note": "Feedback Implementation and Proactive Communication require external inputs (feedback log, communication history); Agent Feedback Relevance scores the auditor agent's own output."
+  },
+  "dimensions": [
+    {
+      "id": "development_progress",
+      "name": "Development Progress",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Evaluate how much of the complete Week 2 deliverable the peer has implemented: git history (atomic vs monolithic), pipeline completeness (detectives parallel fan-out/fan-in, judges with distinct personas and structured output, Chief Justice deterministic synthesis), required files (state with reducers, sandboxed tools, graph wiring, infra, audit reports). Measure delivery completeness and quality of engineering process visible in git and codebase.",
+      "success_pattern": "Atomic commits; full pipeline end-to-end; all required files present and substantive; system run against peer repo with real report.",
+      "failure_pattern": "Monolithic/bulk commits; stubs or non-functional; missing judicial layer or Chief Justice; no evidence of running against real repo.",
+      "levels": [
+        { "id": "complete_system", "name": "Complete System", "points": 35, "description": "Atomic meaningful commits; full pipeline repo→detectives→judges→Chief Justice→Markdown report; all required files present and substantive; run against peer repo with real report." },
+        { "id": "partial_pipeline", "name": "Partial Pipeline", "points": 21, "description": "More than 3 commits with progression; core infra and detective layer in place and running; judicial layer incomplete or missing; no full audit report." },
+        { "id": "superficial", "name": "Superficial", "points": 7, "description": "Repo with some code; single bulk upload or stubs; no iterative git history; no functional graph or tested run." },
+        { "id": "absent", "name": "Absent", "points": 0, "description": "No repo, empty repo, or boilerplate only." }
+      ]
+    },
+    {
+      "id": "feedback_implementation",
+      "name": "Feedback Implementation",
+      "target_artifact": "manual",
+      "forensic_instruction": "Evaluate whether the peer acted on feedback received (from you, code review, or agent-generated audit). Assess traceable changes in git/communication; documented deferrals; use of agent findings for architectural (not just cosmetic) improvements. If no feedback was exchanged, score No Exchange and exclude from total.",
+      "success_pattern": "All substantive feedback addressed with traceable commits or documented deferral; agent findings drove concrete improvements.",
+      "failure_pattern": "No response to feedback; no commits addressing flagged issues; no acknowledgment.",
+      "exclude_from_total_if_level": "no_exchange",
+      "levels": [
+        { "id": "fully_integrated", "name": "Fully Integrated", "points": 20, "description": "All substantive feedback addressed with traceable commits; deferrals documented; agent findings drove architectural improvements; comprehension evident." },
+        { "id": "selective", "name": "Selective", "points": 12, "description": "Some feedback addressed; visible changes in git; at least one concrete change from agent findings; deeper feedback left unaddressed without explanation." },
+        { "id": "ignored", "name": "Ignored", "points": 4, "description": "Feedback was provided but repo shows no evidence of changes; no acknowledgment or commits addressing issues." },
+        { "id": "no_exchange", "name": "No Exchange", "points": 0, "description": "No feedback given or received. Exclude from weighted total." }
+      ]
+    },
+    {
+      "id": "proactive_communication",
+      "name": "Proactive Communication",
+      "target_artifact": "manual",
+      "forensic_instruction": "Evaluate whether the peer proactively communicated about progress, blockers, design decisions, and coordination. Assess initiative in making the feedback loop functional: reachable, forthcoming, engaged. Does not assess technical skill or style.",
+      "success_pattern": "Regular progress sharing; early blocker flagging; repo shared early for multiple feedback rounds; bidirectional collaboration.",
+      "failure_pattern": "No initiation; minimal responses; no sharing without being prompted; unreachable.",
+      "levels": [
+        { "id": "collaborative_driver", "name": "Collaborative Driver", "points": 20, "description": "Regular progress and blockers; sought input on design; shared repo early and often; engaged with agent output; continuous loop." },
+        { "id": "engaged", "name": "Engaged", "points": 12, "description": "Initiated communication several times; shared progress/questions/blockers; repo shared early enough for agent run; responses substantive." },
+        { "id": "reactive_only", "name": "Reactive Only", "points": 4, "description": "Responded only when contacted; minimal responses; no self-initiated updates or early sharing." },
+        { "id": "absent", "name": "Absent", "points": 0, "description": "No communication; no response to messages; unreachable." }
+      ]
+    },
+    {
+      "id": "agent_feedback_relevance",
+      "name": "Agent Feedback Relevance",
+      "target_artifact": "github_repo",
+      "forensic_instruction": "Evaluate whether YOUR auditor agent produced relevant, actionable, forensic-quality feedback when run against the peer's repository. Dual assessment: peer repo is machine-auditable AND your agent produces genuine signal. If agent crashed or produced no output, score 0 or 1. If peer repo is empty, graceful handling and reporting absence is valid. Be honest about agent performance.",
+      "success_pattern": "Complete audit per spec: structured evidence (git, AST, file analysis, cross-reference), multi-perspective judges, synthesized verdict with criterion scores and remediation.",
+      "failure_pattern": "Generic output; hallucinated paths; no file-level specificity; crash or no output.",
+      "levels": [
+        { "id": "full_forensic_audit", "name": "Full Forensic Audit", "points": 25, "description": "Complete audit report per spec; detectives with git/AST/file/cross-reference evidence; judges with distinct viewpoints; synthesized verdict with scores, dissent, remediation; file-level actionable feedback." },
+        { "id": "targeted_analysis", "name": "Targeted Analysis", "points": 15, "description": "Feedback references actual files and structures; correct present/missing checks; detective layer grounded; missing depth (e.g. parallel vs linear, reducers) or judicial synthesis." },
+        { "id": "generic_noise", "name": "Generic Noise", "points": 5, "description": "Generic or boilerplate output; not tied to actual repo; hallucinated paths; no real Evidence grounding." },
+        { "id": "no_output", "name": "No Output", "points": 0, "description": "Agent crashed, no output, or never run; no feedback artifact." }
+      ]
+    }
+  ],
+  "synthesis_rules": {
+    "security_override": "Security vulnerability (e.g. os.system with unsanitized input) caps score; overrides Defense.",
+    "fact_supremacy": "Detective evidence overrides unsupported Judge claims.",
+    "functionality_weight": "Tech Lead assessment on architecture/workability carries highest weight for architecture-related criteria.",
+    "dissent_requirement": "When score variance across judges exceeds 2, include dissent summary.",
+    "variance_re_evaluation": "When variance > 2, apply re-evaluation (e.g. Tech Lead weight) before final score.",
+    "points_aggregation": "Sum points for each criterion from selected level; exclude criterion from total when exclude_from_total_if_level is selected.",
+    "max_total": "100 (35+20+20+25 when all criteria included)."
+  }
+}
