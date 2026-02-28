@@ -160,19 +160,26 @@ def extract_claimed_paths_from_text(text: str) -> list[str]:
     """
     Extract file/path-like strings from text (e.g. PDF report content) for cross-reference.
     Returns a list of normalized path-like strings (e.g. src/graph.py, docs/readme.md).
+    Includes both path-style (src/foo.py) and bare filenames (state.py) to improve
+    verification rate when the report cites files without full path.
     """
     import re
-    # Match path-like patterns: word/word, word/word/word, src/foo.py, etc.
-    pattern = r'\b(?:src|docs|tests|scripts?|config)/[a-zA-Z0-9_./\-]+\.[a-zA-Z0-9]+\b|\b[a-zA-Z0-9_]+/[a-zA-Z0-9_./\-]+\b'
-    found = re.findall(pattern, text)
-    # Normalize and dedupe
+    # Path-style: src/foo.py, docs/readme.md, etc.
+    path_pattern = (
+        r"\b(?:src|docs|tests|scripts?|config)/[a-zA-Z0-9_./\-]+\.[a-zA-Z0-9]+\b"
+        r"|\b[a-zA-Z0-9_]+/[a-zA-Z0-9_./\-]+\b"
+    )
+    # Bare filenames that look like code/docs (e.g. state.py, README.md)
+    bare_pattern = r"\b[a-zA-Z0-9_]+\.(?:py|md|json|txt|yaml|yml|toml)\b"
+    found = list(re.findall(path_pattern, text)) + list(re.findall(bare_pattern, text))
     normalized = []
-    seen = set()
+    seen: set[str] = set()
     for p in found:
         p = p.strip().replace("\\", "/")
-        if p and p not in seen and 1 < len(p) < 200:
-            seen.add(p)
-            normalized.append(p)
+        if not p or p in seen or len(p) < 2 or len(p) > 200:
+            continue
+        seen.add(p)
+        normalized.append(p)
     return normalized
 
 
@@ -182,20 +189,46 @@ def cross_reference_report_claims(
     """
     Cross-reference claimed file paths (e.g. from PDF report) with repo file list.
     Returns {"verified": [...], "unverified": [...]}.
+    Uses exact match, then suffix match (e.g. graph.py vs src/graph.py), and
+    case-normalized comparison so paths that exist are not wrongly marked unverified.
     """
-    repo_set = set(f.replace("\\", "/") for f in repo_file_list)
-    verified = []
-    unverified = []
+    # Normalize: forward slashes, strip, and build case-insensitive lookup for matching
+    def norm(s: str) -> str:
+        return s.replace("\\", "/").strip()
+
+    repo_normalized = [norm(f) for f in repo_file_list if f]
+    repo_set = set(repo_normalized)
+    # For suffix matching: repo paths as-is; also lowercase set for case-insensitive match
+    repo_lower = {r.lower(): r for r in repo_set}
+
+    verified: list[str] = []
+    unverified: list[str] = []
+
     for p in claimed_paths:
-        p_norm = p.replace("\\", "/")
+        p_norm = norm(p)
+        if not p_norm:
+            continue
+        # 1) Exact match (case-sensitive)
         if p_norm in repo_set:
             verified.append(p_norm)
-        else:
-            # Check for partial match (e.g. claimed src/graph.py vs repo has src/graph.py)
-            if any(p_norm in r or r.endswith(p_norm) for r in repo_set):
-                verified.append(p_norm)
-            else:
-                unverified.append(p_norm)
+            continue
+        # 2) Exact match (case-insensitive)
+        if p_norm.lower() in repo_lower:
+            verified.append(p_norm)
+            continue
+        # 3) Claimed path is suffix of a repo path (e.g. graph.py vs src/graph.py)
+        if any(r == p_norm or r.endswith("/" + p_norm) for r in repo_set):
+            verified.append(p_norm)
+            continue
+        if any(r.lower().endswith("/" + p_norm.lower()) for r in repo_set):
+            verified.append(p_norm)
+            continue
+        # 4) Repo path contains claimed path as segment (e.g. src/graph.py in repo)
+        if any(p_norm in r or p_norm.lower() in r.lower() for r in repo_set):
+            verified.append(p_norm)
+            continue
+        unverified.append(p_norm)
+
     return {"verified": verified, "unverified": unverified}
 
 

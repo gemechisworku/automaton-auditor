@@ -57,19 +57,45 @@ class AuditReport(BaseModel):
     remediation_plan: str
 
 
+# ----- Explicit reducers for parallel-written state (API Contracts §3.5) -----
+#
+# LangGraph applies these when merging partial state updates from parallel nodes.
+# Named functions make reducer semantics explicit and maintainable.
+
+
+def merge_evidences(
+    current: dict[str, list[Evidence]], update: dict[str, list[Evidence]]
+) -> dict[str, list[Evidence]]:
+    """
+    Reducer for parallel detective outputs: merge evidence dicts by dimension id.
+    Each detective returns {"evidences": {dimension_id: [Evidence, ...]}}; this merges
+    by key so all dimensions get their lists without overwriting other nodes' results.
+    """
+    return operator.ior(current, update)
+
+
+def merge_opinions(
+    current: list[JudicialOpinion], update: list[JudicialOpinion]
+) -> list[JudicialOpinion]:
+    """
+    Reducer for parallel judge outputs: concatenate opinion lists.
+    Each judge returns {"opinions": [JudicialOpinion, ...]}; this concatenates
+    so all judges' opinions are retained for Chief Justice synthesis.
+    """
+    return operator.add(current, update)
+
+
 # ----- Graph state (TypedDict with reducers for parallel nodes) -----
 #
-# Reducers (LangGraph applies these when merging partial state updates from parallel nodes):
-#   - evidences: operator.ior — merge dicts by key; each node returns {"evidences": {dimension_id: [Evidence, ...]}}.
-#   - opinions:  operator.add — concatenate lists; each Judge returns {"opinions": [JudicialOpinion, ...]}.
-# All other keys (repo_url, pdf_path, rubric_dimensions, final_report, repo_file_list) are overwritten
-# by the last writer; only evidences and opinions use reducers for parallel-written state.
+# Only evidences and opinions use reducers (parallel-written state). All other keys
+# (repo_url, pdf_path, rubric_dimensions, final_report, repo_file_list) are overwritten
+# by the last writer.
 
 
 class AgentState(TypedDict, total=False):
     """
     Graph state passed between nodes.
-    Reducers: evidences merged with operator.ior, opinions with operator.add. API Contracts §3.5.
+    Reducers: evidences → merge_evidences (ior); opinions → merge_opinions (add). API Contracts §3.5.
     """
 
     repo_url: str
@@ -77,7 +103,7 @@ class AgentState(TypedDict, total=False):
     pdf_path: str
     rubric_path: str | None  # optional; Chief Justice loads synthesis_rules from here
     rubric_dimensions: list[dict[str, Any]]
-    evidences: Annotated[dict[str, list[Evidence]], operator.ior]
-    opinions: Annotated[list[JudicialOpinion], operator.add]
+    evidences: Annotated[dict[str, list[Evidence]], merge_evidences]
+    opinions: Annotated[list[JudicialOpinion], merge_opinions]
     final_report: AuditReport | None
     repo_file_list: list[str]  # optional; set by RepoInvestigator for cross-reference (report_accuracy)
